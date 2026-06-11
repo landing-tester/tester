@@ -294,18 +294,76 @@ async function runTest(config, emit) {
 
     // ── Цели Яндекс Метрики ──────────────────────────────────────────────
     if (config.checkYmGoal) {
-      log('Проверяем _ym_debug...', 'info');
+      log('Проверяем цели Яндекс Метрики...', 'info');
+
       const ymUrl = config.landingUrl + (config.landingUrl.includes('?') ? '&' : '?') + '_ym_debug=2';
+
+      // Собираем сработавшие reachGoal через консоль
+      const firedGoals = new Set();
+      page.on('console', msg => {
+        const text = msg.text();
+        // Яндекс Метрика пишет в консоль: YM: goal reachGoal("GOAL_NAME")
+        const match = text.match(/reachGoal\s*\(\s*['"]([^'"]+)['"]/i);
+        if (match) {
+          firedGoals.add(match[1]);
+          log('reachGoal: ' + match[1], 'ok');
+        }
+      });
+
       await page.goto(ymUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
       await sleep(2000);
 
-      const ymAvailable = await page.evaluate(() => typeof window.Ya !== 'undefined' || typeof window.ym !== 'undefined');
+      // Закрываем баннеры
+      for (const s of ['button[data-t="button:accept"]','button:has-text("Принять")','button:has-text("Accept")']) {
+        try {
+          const btn = await page.$(s);
+          if (btn && await btn.isVisible()) { await btn.click(); await sleep(800); break; }
+        } catch (_) {}
+      }
+
+      // Кликаем CTA чтобы спровоцировать цели
+      const ctaSels = (profile && profile.cta) || [
+        '.button_type_new-design span', 'button:has-text("Попробовать")',
+        'button:has-text("Подключить")', 'button:has-text("Купить")',
+      ];
+      for (const s of ctaSels) {
+        try {
+          const el = await page.$(s);
+          if (el && await el.isVisible()) {
+            await el.click();
+            log('Клик CTA для проверки целей', 'ok');
+            await sleep(3000);
+            break;
+          }
+        } catch (_) {}
+      }
+
+      // Проверяем наличие Метрики
+      const ymAvailable = await page.evaluate(() =>
+        typeof window.Ya !== 'undefined' || typeof window.ym !== 'undefined'
+      ).catch(() => false);
+
       if (ymAvailable) {
-        log('Яндекс Метрика найдена на странице', 'ok');
+        log('Яндекс Метрика активна (_ym_debug=2)', 'ok');
         result('Яндекс Метрика', 'pass', '_ym_debug=2 активен');
       } else {
         log('Яндекс Метрика не найдена', 'warn');
         result('Яндекс Метрика', 'warn', 'Ya/ym не найдены');
+      }
+
+      // Определяем сервис по URL и отправляем результаты целей
+      const url = config.landingUrl;
+      const svc = url.includes('music.yandex') ? 'music'
+                : url.includes('kinopoisk')     ? 'kp'
+                : url.includes('books.yandex')  ? 'books'
+                : null;
+
+      if (svc && firedGoals.size > 0) {
+        log('Сработавшие цели: ' + Array.from(firedGoals).join(', '), 'ok');
+        emit({ type: 'goals', svc, firedGoals: Array.from(firedGoals) });
+      } else if (firedGoals.size === 0) {
+        log('Целей не зафиксировано — возможно нужна авторизация', 'warn');
+        emit({ type: 'goals', svc, firedGoals: [] });
       }
     }
 
