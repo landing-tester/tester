@@ -1,0 +1,18 @@
+{
+  "name": "landing-tester-server",
+  "version": "2.0.0",
+  "description": "LandingTester — реальный Playwright тестер лендингов",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "install-browsers": "npx playwright install chromium --with-deps"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "playwright": "^1.44.0",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
