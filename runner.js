@@ -62,16 +62,59 @@ async function runTest(config, emit) {
     // ── Открываем лендинг ────────────────────────────────────────────────
     log('Открываем: ' + config.landingUrl, 'info');
     await page.goto(config.landingUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await sleep(2000);
+    await sleep(3000);
     result('Страница открыта', 'pass');
+
+    // ── Закрываем cookie-баннер и поп-апы ────────────────────────────────
+    log('Закрываем баннеры...', 'info');
+    const bannerSels = [
+      // Яндекс cookie
+      'button[data-t="button:accept"]',
+      'button:has-text("Принять")',
+      'button:has-text("Принять все")',
+      'button:has-text("Хорошо")',
+      'button:has-text("Согласен")',
+      'button:has-text("Agree")',
+      'button:has-text("Accept")',
+      'button:has-text("Accept all")',
+      // Общие
+      '[class*="cookie"] button',
+      '[class*="gdpr"] button',
+      '[id*="cookie"] button',
+      '[class*="consent"] button',
+      // Яндекс попапы
+      'button[aria-label="Закрыть"]',
+      'button[aria-label="Close"]',
+    ];
+    for (const s of bannerSels) {
+      try {
+        const btn = await page.$(s);
+        if (btn && await btn.isVisible()) {
+          await btn.click();
+          log('Закрыт баннер: ' + s, 'ok');
+          await sleep(1000);
+          break;
+        }
+      } catch (_) {}
+    }
+    await sleep(2000);
 
     // ── Функциональные проверки ──────────────────────────────────────────
     log('Проверяем H1...', 'info');
-    const h1 = await page.$('h1');
-    if (h1) {
-      const h1Text = await h1.innerText().catch(() => '');
-      log('H1: ' + h1Text.trim().slice(0, 60), 'ok');
-      result('H1 присутствует', 'pass', h1Text.trim().slice(0, 60));
+    const h1Els = await page.$$('h1');
+    let h1Text = '';
+    for (const el of h1Els) {
+      try {
+        const txt = (await el.innerText()).trim();
+        // Берём самый длинный H1, игнорируем технические (cookie, meta)
+        if (txt.length > h1Text.length && !txt.toLowerCase().includes('cookie') && !txt.toLowerCase().includes('uses cookies')) {
+          h1Text = txt;
+        }
+      } catch (_) {}
+    }
+    if (h1Text) {
+      log('H1: ' + h1Text.slice(0, 60), 'ok');
+      result('H1 присутствует', 'pass', h1Text.slice(0, 60));
     } else {
       log('H1 не найден', 'warn');
       result('H1 присутствует', 'warn', 'H1 не найден');
