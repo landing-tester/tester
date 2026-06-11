@@ -1,9 +1,6 @@
-// runner.js — запускает реальный Playwright тест и стримит результаты через callback
-
+// runner.js — адаптированный test.js для работы через сервер
 const { chromium, webkit, devices } = require('playwright');
-const path = require('path');
 
-// Загружаем selectors
 let selectorRegistry = [];
 try { selectorRegistry = require('./selectors.js'); } catch (_) {}
 
@@ -27,9 +24,9 @@ async function findInput(ctx, selectors) {
   return null;
 }
 
-// Основная функция — принимает конфиг и emit-коллбек
 async function runTest(config, emit) {
   const results = [];
+  const ymGoals = [];
 
   function log(msg, type = 'info') {
     emit({ type: 'log', msg, logType: type });
@@ -43,11 +40,10 @@ async function runTest(config, emit) {
   const profile = findProfile(config.landingUrl);
   if (profile) log('Профиль: ' + profile.name, 'info');
 
-  // Запускаем браузер
   log('Запускаем браузер...', 'info');
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   });
 
   const context = await browser.newContext({
@@ -58,56 +54,83 @@ async function runTest(config, emit) {
 
   const page = await context.newPage();
 
+  // Перехват целей Метрики через CDP
   try {
-    // ── Открываем лендинг ────────────────────────────────────────────────
-    log('Открываем: ' + config.landingUrl, 'info');
-    await page.goto(config.landingUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await sleep(3000);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Runtime.enable');
+    cdp.on('Runtime.consoleAPICalled', event => {
+      const text = (event.args || []).map(a => a.value || a.description || '').join(' ');
+      if (/reachGoal|Goal|ym\./i.test(text)) {
+        ymGoals.push(text);
+        log('Метрика: ' + text.slice(0, 100), 'ok');
+      }
+    });
+  } catch (_) {}
+
+  page.on('console', msg => {
+    const text = msg.text();
+    const match = text.match(/reachGoal\s*\(\s*['"]([^'"]+)['"]/i);
+    if (match) {
+      ymGoals.push(match[1]);
+      log('reachGoal: ' + match[1], 'ok');
+    }
+  });
+
+  try {
+    // ── Открываем лендинг с _ym_debug=2 ──────────────────────────────────
+    const ymUrl = config.landingUrl + (config.landingUrl.includes('?') ? '&' : '?') + '_ym_debug=2';
+    log('Открываем: ' + ymUrl, 'info');
+    await page.goto(ymUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await sleep(2500);
     result('Страница открыта', 'pass');
 
-    // ── Закрываем cookie-баннер и поп-апы ────────────────────────────────
-    log('Закрываем баннеры...', 'info');
-    const bannerSels = [
-      // Яндекс cookie
-      'button[data-t="button:accept"]',
-      'button:has-text("Принять")',
-      'button:has-text("Принять все")',
-      'button:has-text("Хорошо")',
-      'button:has-text("Согласен")',
-      'button:has-text("Agree")',
-      'button:has-text("Accept")',
-      'button:has-text("Accept all")',
-      // Общие
-      '[class*="cookie"] button',
-      '[class*="gdpr"] button',
-      '[id*="cookie"] button',
-      '[class*="consent"] button',
-      // Яндекс попапы
-      'button[aria-label="Закрыть"]',
-      'button[aria-label="Close"]',
-    ];
-    for (const s of bannerSels) {
+    // ── Обрабатываем поп-ап ───────────────────────────────────────────────
+    await sleep(1500);
+
+    // Закрываем поп-ап крестиком
+    const popupCloseSel = profile && profile.popupClose;
+    if (popupCloseSel) {
       try {
-        const btn = await page.$(s);
-        if (btn && await btn.isVisible()) {
-          await btn.click();
-          log('Закрыт баннер: ' + s, 'ok');
-          await sleep(1000);
-          break;
+        const closeBtn = await page.$(popupCloseSel);
+        if (closeBtn && await closeBtn.isVisible()) {
+          await closeBtn.click();
+          log('Поп-ап закрыт крестиком', 'ok');
+          await sleep(2000);
+          await page.evaluate(() => window.scrollTo(0, 0));
         }
       } catch (_) {}
+    } else {
+      // Пробуем стандартные кнопки закрытия
+      const closeSels = [
+        'button[aria-label="Закрыть"]', 'button[aria-label="Close"]',
+        '[class*="close"]', 'button:has-text("Позже")', 'button:has-text("Не сейчас")',
+        'button[data-t="button:accept"]', 'button:has-text("Принять")',
+      ];
+      for (const s of closeSels) {
+        try {
+          const btn = await page.$(s);
+          if (btn && await btn.isVisible()) {
+            const txt = await btn.innerText().catch(() => s);
+            await btn.click();
+            log('Закрыт баннер: "' + txt.trim().slice(0, 30) + '"', 'ok');
+            await sleep(1000);
+            break;
+          }
+        } catch (_) {}
+      }
     }
-    await sleep(2000);
 
-    // ── Функциональные проверки ──────────────────────────────────────────
+    // ── Базовые проверки ─────────────────────────────────────────────────
     log('Проверяем H1...', 'info');
     const h1Els = await page.$$('h1');
     let h1Text = '';
     for (const el of h1Els) {
       try {
         const txt = (await el.innerText()).trim();
-        // Берём самый длинный H1, игнорируем технические (cookie, meta)
-        if (txt.length > h1Text.length && !txt.toLowerCase().includes('cookie') && !txt.toLowerCase().includes('uses cookies')) {
+        if (txt.length > h1Text.length &&
+            !txt.toLowerCase().includes('cookie') &&
+            !txt.toLowerCase().includes('uses cookies') &&
+            !txt.toLowerCase().includes('использует')) {
           h1Text = txt;
         }
       } catch (_) {}
@@ -121,11 +144,10 @@ async function runTest(config, emit) {
     }
 
     // CTA кнопка
-    log('Ищем CTA кнопку...', 'info');
     const ctaSels = (profile && profile.cta) || [
       'button:has-text("Попробовать")', 'button:has-text("Подключить")',
-      'button:has-text("Купить")', 'button:has-text("Оформить")',
-      '.button_type_new-design span', '[class*="cta"]',
+      'button:has-text("Купить")', 'span:has-text("До года бесплатно")',
+      '.button_type_new-design span', '[class*="button-subscription__button"] span',
     ];
     let ctaFound = false;
     for (const s of ctaSels) {
@@ -145,7 +167,7 @@ async function runTest(config, emit) {
       result('CTA кнопка', 'warn', 'Не найдена');
     }
 
-    // Мета-теги
+    // Meta title
     const metaTitle = await page.title().catch(() => '');
     if (metaTitle) {
       log('Title: ' + metaTitle.slice(0, 60), 'ok');
@@ -155,12 +177,11 @@ async function runTest(config, emit) {
     }
 
     // Битые картинки
-    log('Проверяем картинки...', 'info');
-    const brokenImgs = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('img'))
+    const brokenImgs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('img'))
         .filter(img => !img.complete || img.naturalWidth === 0)
-        .map(img => img.src).slice(0, 5);
-    });
+        .map(img => img.src).slice(0, 5)
+    );
     if (brokenImgs.length === 0) {
       log('Битых картинок нет', 'ok');
       result('Битые картинки', 'pass');
@@ -183,216 +204,217 @@ async function runTest(config, emit) {
     // ── Авторизация ──────────────────────────────────────────────────────
     if (config.account && config.account.email && config.account.password) {
       log('Начинаем авторизацию...', 'info');
-      emit({ type: 'step', step: 'auth' });
 
-      // Шаг 1: закрываем поп-ап крестиком если есть
-      if (profile && profile.popupClose) {
-        await sleep(1500);
-        try {
-          const closeBtn = await page.$(profile.popupClose);
-          if (closeBtn && await closeBtn.isVisible()) {
-            await closeBtn.click();
-            log('Поп-ап закрыт крестиком', 'ok');
-            await sleep(2000);
-          }
-        } catch (_) {}
-      }
-
-      // Шаг 2: делаем скриншот для отладки
-      try {
-        await page.screenshot({ path: '/tmp/debug-after-popup.png', fullPage: false });
-        log('Скриншот сохранён: /tmp/debug-after-popup.png', 'info');
-        // Логируем все кнопки на странице
-        const buttons = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('button, [class*="button"], [class*="btn"]'))
-            .slice(0, 10)
-            .map(b => b.textContent.trim().slice(0, 50) + ' | ' + b.className.slice(0, 50))
-        );
-        log('Кнопки на странице: ' + buttons.join(' || '), 'info');
-      } catch (_) {}
-
-      // Шаг 2: кликаем CTA на лендинге
+      // Кликаем CTA на лендинге
       let ctaClicked = false;
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await sleep(500);
+
       for (const s of ctaSels) {
         try {
-          const el = await page.$(s);
-          if (el && await el.isVisible()) {
-            await el.click();
-            await sleep(2000);
-            ctaClicked = true;
-            log('Клик на CTA: ' + s, 'ok');
-            break;
+          let el;
+          if (s.startsWith('xpath=')) {
+            const els = await page.$x(s.replace('xpath=', '')).catch(() => []);
+            el = els[0] || null;
+          } else {
+            el = await page.$(s);
+          }
+          if (el) {
+            await el.scrollIntoViewIfNeeded().catch(() => {});
+            const box = await el.boundingBox();
+            if (box && box.width > 0) {
+              await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+              log('Клик CTA для авторизации', 'ok');
+              ctaClicked = true;
+              await sleep(2500);
+              break;
+            }
           }
         } catch (_) {}
       }
-      if (!ctaClicked) log('CTA не найдена', 'warn');
 
-      // Шаг 3: кнопка «Войти» в поп-апе после CTA (для Кинопоиска)
-      await sleep(1500);
-      const popupLoginSel = sel(profile, 'popupLogin', null, config.selectors);
-      if (popupLoginSel) {
-        const popupLogin = await page.$(popupLoginSel).catch(() => null);
-        if (popupLogin && await popupLogin.isVisible().catch(() => false)) {
-          await popupLogin.click();
-          await sleep(1500);
-          log('Клик на кнопку авторизации', 'ok');
+      // Кнопка «Войти» в поп-апе (Кинопоиск)
+      if (!page.url().includes('passport.yandex')) {
+        const popupLoginSel = sel(profile, 'popupLogin', null, config.selectors);
+        if (popupLoginSel) {
+          const popupLogin = await page.$(popupLoginSel).catch(() => null);
+          if (popupLogin && await popupLogin.isVisible().catch(() => false)) {
+            await popupLogin.click();
+            await sleep(1500);
+            log('Клик на кнопку авторизации', 'ok');
+          }
         }
       }
 
-      // Email toggle
-      const emailToggleSel = sel(profile, 'emailToggle',
-        'button.login__toggle-switch:has-text("Почта"), button.login__toggle-btn:has-text("Почта")', config.selectors);
-      const emailToggle = await page.$(emailToggleSel).catch(() => null);
-      if (emailToggle && await emailToggle.isVisible().catch(() => false)) {
-        await emailToggle.click();
-        await sleep(500);
-        log('Переключились на Почта', 'ok');
-      }
+      // Ждём passport
+      await page.waitForURL('**/passport.yandex**', { timeout: 8000 }).catch(() => {});
+      await sleep(500);
 
-      // Вводим логин
-      const loginField = await findInput(page, [
-        'input[name="login"]', 'input[name="email"]',
-        'input[type="email"]', 'input.login__input',
-        'input[placeholder*="почт"]', 'input[placeholder*="логин"]',
-      ]);
-      if (loginField) {
-        const loginVal = config.account.loginMode === 'login'
-          ? config.account.login
-          : config.account.email;
-        await loginField.fill(loginVal);
-        await sleep(300);
-        log('Логин введён: ' + loginVal, 'ok');
+      const isPassport = page.url().includes('passport.yandex');
 
-        // Enter или кнопка Войти
-        await page.keyboard.press('Enter');
-        await sleep(1500);
+      if (isPassport) {
+        log('Открылся Яндекс паспорт', 'ok');
+
+        // Кнопка «Ещё» → «Войти по логину»
+        const moreSels = ['[data-testid="split-add-user-more-button"]', 'button:has-text("Ещё")', 'a:has-text("Ещё")'];
+        for (const s of moreSels) {
+          try {
+            const el = await page.$(s);
+            if (el && await el.isVisible()) {
+              await el.click();
+              await sleep(600);
+              log('Открыто меню «Ещё»', 'ok');
+              const loginItem = await page.$('[data-testid="menu-option-switchToLogin"], button:has-text("Войти по логину")').catch(() => null);
+              if (loginItem) { await loginItem.click(); await sleep(500); log('Войти по логину', 'ok'); }
+              break;
+            }
+          } catch (_) {}
+        }
+
+        // Вводим логин
+        const credential = config.account.loginMode === 'login' ? config.account.login : config.account.email;
+        const loginField = await findInput(page, [
+          'input[id="passp-field-login"]', 'input[name="login"]',
+          'input[autocomplete="username"]', 'input[placeholder*="логин" i]',
+        ]);
+
+        if (loginField) {
+          await loginField.click(); await sleep(200);
+          await loginField.fill(credential);
+          log('Логин: ' + credential, 'ok');
+        } else {
+          // кликаем по координатам
+          try {
+            const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
+            if (bodyAuth) {
+              const box = await bodyAuth.boundingBox();
+              if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.3);
+            }
+          } catch (_) {}
+          await page.keyboard.type(credential, { delay: 60 });
+          log('Логин введён по координатам', 'ok');
+        }
+
+        const loginBtn = await page.$('button:has-text("Войти")');
+        if (loginBtn) { await loginBtn.click(); } else { await page.keyboard.press('Enter'); }
+        await sleep(2000);
+
+        // Пароль
+        const passField = await findInput(page, [
+          'input[id="passp-field-passwd"]', 'input[name="passwd"]',
+          'input[type="password"]', 'input[autocomplete="current-password"]',
+        ]);
+
+        if (passField) {
+          await passField.click(); await sleep(200);
+          await passField.fill(config.account.password);
+          log('Пароль введён', 'ok');
+        } else {
+          try {
+            const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
+            if (bodyAuth) {
+              const box = await bodyAuth.boundingBox();
+              if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.3);
+            }
+          } catch (_) {}
+          await page.keyboard.type(config.account.password, { delay: 60 });
+          log('Пароль введён по координатам', 'ok');
+        }
+
+        const nextBtn = await page.$('button:has-text("Далее"), button:has-text("Войти")');
+        if (nextBtn) { await nextBtn.click(); } else { await page.keyboard.press('Enter'); }
+        log('Ждём завершения авторизации...', 'info');
+
+        await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
+        await sleep(2000);
+
+        if (!page.url().includes('passport.yandex')) {
+          log('Авторизация успешна', 'ok');
+          result('Авторизация', 'pass');
+        } else {
+          log('Авторизация не завершена — проверьте логин/пароль', 'warn');
+          result('Авторизация', 'warn', 'Проверьте логин/пароль');
+        }
+      } else if (ctaClicked) {
+        log('Авторизация через форму на лендинге', 'info');
+        // Кинопоиск — форма прямо на странице
+        const emailToggleSel = sel(profile, 'emailToggle', null, config.selectors);
+        if (emailToggleSel) {
+          const toggle = await page.$(emailToggleSel).catch(() => null);
+          if (toggle && await toggle.isVisible().catch(() => false)) {
+            await toggle.click(); await sleep(500);
+            log('Переключились на Почта', 'ok');
+          }
+        }
+
+        const emailFieldSel = sel(profile, 'emailField', 'input[name="email"], input[name="login"]', config.selectors);
+        const emailField = await findInput(page, emailFieldSel.split(',').map(s => s.trim()));
+        if (emailField) {
+          const credential = config.account.loginMode === 'login' ? config.account.login : config.account.email;
+          await emailField.fill(credential);
+          log('Логин введён: ' + credential, 'ok');
+          await page.keyboard.press('Enter');
+          await sleep(1500);
+          result('Авторизация', 'pass');
+        } else {
+          log('Поле логина не найдено', 'warn');
+          result('Авторизация', 'warn', 'Поле не найдено');
+        }
       } else {
-        log('Поле логина не найдено', 'warn');
-        result('Авторизация', 'warn', 'Поле логина не найдено');
-      }
-
-      // Пароль
-      const passField = await findInput(page, [
-        'input[name="passwd"]', 'input[name="password"]',
-        'input[type="password"]', 'input.login__input',
-      ]);
-      if (passField) {
-        await passField.fill(config.account.password);
-        await sleep(300);
-        log('Пароль введён', 'ok');
-        await page.keyboard.press('Enter');
-        await sleep(3000);
-        log('Авторизация выполнена', 'ok');
-        result('Авторизация', 'pass');
-      } else {
-        log('Поле пароля не найдено', 'warn');
-        result('Авторизация', 'warn', 'Поле пароля не найдено');
+        log('CTA не найдена — авторизация пропущена', 'warn');
+        result('Авторизация', 'warn', 'CTA не найдена');
       }
     }
 
-    // ── Виджет покупки ───────────────────────────────────────────────────
+    // ── Виджет ──────────────────────────────────────────────────────────
     if (config.checkWidget !== false) {
       log('Ищем виджет покупки...', 'info');
-      emit({ type: 'step', step: 'widget' });
       await sleep(2000);
-
-      // Ищем кнопку «Подключить» в виджете
-      const connectSel = sel(profile, 'connectBtn',
-        '[data-testid="trust-card-form-submit-button"], button:has-text("Подключить"), button:has-text("Оформить")',
-        config.selectors);
-      const connectBtn = await page.$(connectSel).catch(() => null);
-
-      if (connectBtn && await connectBtn.isVisible().catch(() => false)) {
-        log('Виджет открыт, кнопка подключения найдена', 'ok');
-        result('Виджет покупки', 'pass', 'Кнопка видна');
-      } else {
-        // Проверяем iframe виджета
-        let widgetFrame = null;
-        for (const f of page.frames()) {
-          if (f.url().includes('payment-widget')) { widgetFrame = f; break; }
-        }
-        if (widgetFrame) {
-          log('Виджет найден в iframe', 'ok');
-          result('Виджет покупки', 'pass', 'Iframe виджета найден');
-        } else {
-          log('Виджет не найден', 'warn');
-          result('Виджет покупки', 'warn', 'Не отображается');
-        }
-      }
-    }
-
-    // ── Цели Яндекс Метрики ──────────────────────────────────────────────
-    if (config.checkYmGoal) {
-      log('Проверяем цели Яндекс Метрики...', 'info');
-
-      const ymUrl = config.landingUrl + (config.landingUrl.includes('?') ? '&' : '?') + '_ym_debug=2';
-
-      // Собираем сработавшие reachGoal через консоль
-      const firedGoals = new Set();
-      page.on('console', msg => {
-        const text = msg.text();
-        // Яндекс Метрика пишет в консоль: YM: goal reachGoal("GOAL_NAME")
-        const match = text.match(/reachGoal\s*\(\s*['"]([^'"]+)['"]/i);
-        if (match) {
-          firedGoals.add(match[1]);
-          log('reachGoal: ' + match[1], 'ok');
-        }
-      });
-
-      await page.goto(ymUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-      await sleep(2000);
-
-      // Закрываем баннеры
-      for (const s of ['button[data-t="button:accept"]','button:has-text("Принять")','button:has-text("Accept")']) {
-        try {
-          const btn = await page.$(s);
-          if (btn && await btn.isVisible()) { await btn.click(); await sleep(800); break; }
-        } catch (_) {}
-      }
-
-      // Кликаем CTA чтобы спровоцировать цели
-      const ctaSels = (profile && profile.cta) || [
-        '.button_type_new-design span', 'button:has-text("Попробовать")',
-        'button:has-text("Подключить")', 'button:has-text("Купить")',
+      const widgetSels = [
+        '[data-testid="trust-card-form-submit-button"]',
+        'button:has-text("Подключить")', 'button:has-text("Оформить")',
+        '[class*="widget"]', '[class*="payment"]', 'iframe[src*="payment-widget"]',
       ];
-      for (const s of ctaSels) {
+      let widgetFound = false;
+      for (const s of widgetSels) {
         try {
           const el = await page.$(s);
           if (el && await el.isVisible()) {
-            await el.click();
-            log('Клик CTA для проверки целей', 'ok');
-            await sleep(3000);
+            log('Виджет найден: ' + s, 'ok');
+            result('Виджет покупки', 'pass');
+            widgetFound = true;
             break;
           }
         } catch (_) {}
       }
-
-      // Проверяем наличие Метрики
-      const ymAvailable = await page.evaluate(() =>
-        typeof window.Ya !== 'undefined' || typeof window.ym !== 'undefined'
-      ).catch(() => false);
-
-      if (ymAvailable) {
-        log('Яндекс Метрика активна (_ym_debug=2)', 'ok');
-        result('Яндекс Метрика', 'pass', '_ym_debug=2 активен');
-      } else {
-        log('Яндекс Метрика не найдена', 'warn');
-        result('Яндекс Метрика', 'warn', 'Ya/ym не найдены');
+      // Проверяем iframe
+      if (!widgetFound) {
+        for (const f of page.frames()) {
+          if (f.url().includes('payment-widget')) {
+            log('Виджет найден в iframe', 'ok');
+            result('Виджет покупки', 'pass', 'Iframe');
+            widgetFound = true;
+            break;
+          }
+        }
       }
+      if (!widgetFound) {
+        log('Виджет не найден', 'warn');
+        result('Виджет покупки', 'warn', 'Не отображается');
+      }
+    }
 
-      // Определяем сервис по URL и отправляем результаты целей
-      const url = config.landingUrl;
-      const svc = url.includes('music.yandex') ? 'music'
-                : url.includes('kinopoisk')     ? 'kp'
-                : url.includes('books.yandex')  ? 'books'
-                : null;
-
-      if (svc && firedGoals.size > 0) {
-        log('Сработавшие цели: ' + Array.from(firedGoals).join(', '), 'ok');
-        emit({ type: 'goals', svc, firedGoals: Array.from(firedGoals) });
-      } else if (firedGoals.size === 0) {
-        log('Целей не зафиксировано — возможно нужна авторизация', 'warn');
-        emit({ type: 'goals', svc, firedGoals: [] });
+    // ── Цели Метрики ────────────────────────────────────────────────────
+    if (config.checkYmGoal) {
+      log('Итого целей Метрики: ' + ymGoals.length, ymGoals.length > 0 ? 'ok' : 'warn');
+      if (ymGoals.length > 0) {
+        result('Яндекс Метрика', 'pass', ymGoals.length + ' событий');
+        const url = config.landingUrl;
+        const svc = url.includes('music.yandex') ? 'music' : url.includes('kinopoisk') ? 'kp' : url.includes('books.yandex') ? 'books' : null;
+        if (svc) emit({ type: 'goals', svc, firedGoals: ymGoals });
+      } else {
+        log('Целей не зафиксировано — откройте лендинг вручную с _ym_debug=2', 'warn');
+        result('Яндекс Метрика', 'warn', '0 событий');
       }
     }
 
@@ -401,9 +423,10 @@ async function runTest(config, emit) {
     result('Критическая ошибка', 'fail', err.message);
   } finally {
     await browser.close();
-    log('Готово. Прошли: ' + results.filter(r => r.status === 'pass').length +
-        ' Упали: ' + results.filter(r => r.status === 'fail').length +
-        ' Предупреждения: ' + results.filter(r => r.status === 'warn').length, 'ok');
+    const pass = results.filter(r => r.status === 'pass').length;
+    const fail = results.filter(r => r.status === 'fail').length;
+    const warn = results.filter(r => r.status === 'warn').length;
+    log('Готово. Прошли: ' + pass + ' Упали: ' + fail + ' Предупреждения: ' + warn, fail > 0 ? 'warn' : 'ok');
     emit({ type: 'results', results });
   }
 }
