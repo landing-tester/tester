@@ -875,6 +875,25 @@ function runTests() {
       updateClNav();
     }
 
+    if (data.type === 'goals') {
+      // Автоматически проставляем статусы целей по сервису
+      if (data.svc) {
+        var goalMap = {};
+        GOALS_DATA.forEach(function(g) {
+          if (g.svc === data.svc && g.has) {
+            // Ищем совпадение по названию цели
+            var fired = data.firedGoals.some(function(fg) {
+              return fg.toLowerCase() === g.goal.toLowerCase();
+            });
+            goalStatuses[g.id] = fired ? 'pass' : 'idle';
+          }
+        });
+        renderGoals();
+        updateGoalNav();
+        log('Цели обновлены для сервиса: ' + data.svc, 'info');
+      }
+    }
+
     if (data.type === 'done') {
       finishRun();
     }
