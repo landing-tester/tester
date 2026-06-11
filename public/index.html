@@ -425,7 +425,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
               <button onclick="setLoginMode('login')" id="mode-login" style="font-size:10px;padding:1px 7px;border-radius:3px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font-head);font-weight:600">Логин</button>
             </span>
           </label>
-          <input type="text" id="cfg-acc-email" placeholder="test@example.com"/>
+          <input type="text" id="cfg-acc-email" placeholder="test@example.com" oninput="autoYaRu(this)"/>
         </div>
         <div class="cfg-field"><label>Пароль</label>
           <div style="position:relative">
@@ -569,6 +569,28 @@ function getLandingUrl() {
   return (document.getElementById('cfg-url') || {value:''}).value.trim() || 'https://example.com';
 }
 var loginMode = 'email'; // 'email' | 'login'
+
+function autoYaRu(el) {
+  if (loginMode !== 'email') return;
+  var v = el.value;
+  if (v && !v.includes('@') && !v.endsWith('@ya.ru')) {
+    // не трогаем пока пользователь не закончил ввод
+  }
+}
+
+// При потере фокуса — дописываем @ya.ru если нет @
+document.addEventListener('DOMContentLoaded', function() {
+  var emailInput = document.getElementById('cfg-acc-email');
+  if (emailInput) {
+    emailInput.addEventListener('blur', function() {
+      if (loginMode !== 'email') return;
+      var v = this.value.trim();
+      if (v && !v.includes('@')) {
+        this.value = v + '@ya.ru';
+      }
+    });
+  }
+});
 
 function setLoginMode(mode) {
   loginMode = mode;
