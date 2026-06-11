@@ -185,29 +185,45 @@ async function runTest(config, emit) {
       log('Начинаем авторизацию...', 'info');
       emit({ type: 'step', step: 'auth' });
 
-      // Кликаем CTA
+      // Шаг 1: закрываем поп-ап крестиком если есть
+      if (profile && profile.popupClose) {
+        await sleep(1500);
+        try {
+          const closeBtn = await page.$(profile.popupClose);
+          if (closeBtn && await closeBtn.isVisible()) {
+            await closeBtn.click();
+            log('Поп-ап закрыт крестиком', 'ok');
+            await sleep(2000);
+          }
+        } catch (_) {}
+      }
+
+      // Шаг 2: кликаем CTA на лендинге
       let ctaClicked = false;
       for (const s of ctaSels) {
         try {
           const el = await page.$(s);
           if (el && await el.isVisible()) {
             await el.click();
-            await sleep(1500);
+            await sleep(2000);
             ctaClicked = true;
-            log('Клик на CTA', 'ok');
+            log('Клик на CTA: ' + s, 'ok');
             break;
           }
         } catch (_) {}
       }
+      if (!ctaClicked) log('CTA не найдена', 'warn');
 
-      // Кнопка «Войти» в поп-апе
+      // Шаг 3: кнопка «Войти» в поп-апе после CTA (для Кинопоиска)
       await sleep(1500);
-      const popupLoginSel = sel(profile, 'popupLogin', 'div.sign-in__button, button:has-text("Войти")', config.selectors);
-      const popupLogin = await page.$(popupLoginSel).catch(() => null);
-      if (popupLogin && await popupLogin.isVisible().catch(() => false)) {
-        await popupLogin.click();
-        await sleep(1500);
-        log('Клик на кнопку авторизации', 'ok');
+      const popupLoginSel = sel(profile, 'popupLogin', null, config.selectors);
+      if (popupLoginSel) {
+        const popupLogin = await page.$(popupLoginSel).catch(() => null);
+        if (popupLogin && await popupLogin.isVisible().catch(() => false)) {
+          await popupLogin.click();
+          await sleep(1500);
+          log('Клик на кнопку авторизации', 'ok');
+        }
       }
 
       // Email toggle
