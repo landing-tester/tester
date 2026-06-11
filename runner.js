@@ -198,6 +198,19 @@ async function runTest(config, emit) {
         } catch (_) {}
       }
 
+      // Шаг 2: делаем скриншот для отладки
+      try {
+        await page.screenshot({ path: '/tmp/debug-after-popup.png', fullPage: false });
+        log('Скриншот сохранён: /tmp/debug-after-popup.png', 'info');
+        // Логируем все кнопки на странице
+        const buttons = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('button, [class*="button"], [class*="btn"]'))
+            .slice(0, 10)
+            .map(b => b.textContent.trim().slice(0, 50) + ' | ' + b.className.slice(0, 50))
+        );
+        log('Кнопки на странице: ' + buttons.join(' || '), 'info');
+      } catch (_) {}
+
       // Шаг 2: кликаем CTA на лендинге
       let ctaClicked = false;
       for (const s of ctaSels) {
