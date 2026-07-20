@@ -1,7 +1,7 @@
-const express    = require('express');
-const http       = require('http');
-const WebSocket  = require('ws');
-const path       = require('path');
+const express   = require('express');
+const http      = require('http');
+const WebSocket = require('ws');
+const path      = require('path');
 const { runTest } = require('./runner.js');
 
 const app    = express();
@@ -13,13 +13,32 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Активные клиенты WebSocket
 const clients = new Set();
+// Ожидающие SMS резолверы: Map<wsClient, Function>
+const smsResolvers = new Map();
 
 wss.on('connection', ws => {
   clients.add(ws);
-  ws.on('close', () => clients.delete(ws));
+
+  ws.on('message', (raw) => {
+    try {
+      const data = JSON.parse(raw);
+      // Пользователь ввёл SMS-код в браузере
+      if (data.type === 'sms_code') {
+        const resolve = smsResolvers.get(ws);
+        if (resolve) {
+          smsResolvers.delete(ws);
+          resolve(data.code);
+        }
+      }
+    } catch (_) {}
+  });
+
+  ws.on('close', () => {
+    clients.delete(ws);
+    smsResolvers.delete(ws);
+  });
 });
 
-// Рассылаем сообщение всем клиентам
 function broadcast(data) {
   const msg = JSON.stringify(data);
   clients.forEach(ws => {
@@ -27,33 +46,51 @@ function broadcast(data) {
   });
 }
 
-// POST /run — запускает тест
 let testRunning = false;
+let activeWs = null;
 
 app.post('/run', async (req, res) => {
-  if (testRunning) {
-    return res.status(409).json({ error: 'Тест уже запущен' });
-  }
-  const config = req.body;
-  if (!config.landingUrl) {
-    return res.status(400).json({ error: 'Укажите URL лендинга' });
-  }
+  if (testRunning) return res.status(409).json({ error: 'Тест уже запущен' });
 
-  res.json({ ok: true, message: 'Тест запущен' });
+  const config = req.body;
+  if (!config.landingUrl) return res.status(400).json({ error: 'Укажите URL лендинга' });
+
+  res.json({ ok: true });
   testRunning = true;
+
+  // Находим активный WebSocket клиент
+  activeWs = null;
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) { activeWs = ws; break; }
+  }
 
   try {
     broadcast({ type: 'start', config });
-    await runTest(config, (event) => broadcast(event));
+
+    await runTest(config, (event) => {
+      // SMS запрос — отправляем в браузер и ждём ответа
+      if (event.type === 'sms_wait' && activeWs) {
+        const resolve = event.resolve;
+        smsResolvers.set(activeWs, resolve);
+        activeWs.send(JSON.stringify({ type: 'sms_required' }));
+        return;
+      }
+      if (event.type === 'sms_wait') {
+        event.resolve('');
+        return;
+      }
+      broadcast(event);
+    });
+
   } catch (err) {
     broadcast({ type: 'error', message: err.message });
   } finally {
     testRunning = false;
     broadcast({ type: 'done' });
+    activeWs = null;
   }
 });
 
-// GET /status — проверить запущен ли тест
 app.get('/status', (req, res) => {
   res.json({ running: testRunning });
 });
