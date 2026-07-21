@@ -538,7 +538,7 @@ async function runTest(config, emit) {
                 // проверяем 3DS фрейм банка и ищем SMS поле
                 let has3ds = false;
                 for (const f of page.frames()) {
-                  if (si % 10 === 0) log('Фрейм: ' + f.url().slice(0, 80), 'info');
+
                   const furl = f.url();
                   // 3DS фрейм банка — ждём именно страницу с формой ввода кода
                   // trust.yandex.ru — промежуточный, secure.tbank.ru — реальная форма
