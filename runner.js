@@ -373,6 +373,35 @@ async function runTest(config, emit) {
       log('Ищем виджет покупки...', 'info');
       await sleep(2000);
 
+      // После авторизации кликаем CTA снова чтобы открыть виджет
+      const ctaSels2 = (profile && profile.cta) || [
+        'div.promo-sport__button-subscription-offer',
+        '[class*="button_background_gradient"]',
+        'button:has-text("До года бесплатно")',
+        'button:has-text("Попробовать бесплатно")',
+        'button:has-text("Попробовать")',
+        'button:has-text("Подключить")',
+        'span:has-text("До года бесплатно")',
+        '.button_type_new-design span',
+      ];
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await sleep(500);
+      for (const s of ctaSels2) {
+        try {
+          const el = await page.$(s);
+          if (el) {
+            await el.scrollIntoViewIfNeeded().catch(() => {});
+            const box = await el.boundingBox();
+            if (box && box.width > 0) {
+              await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
+              log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
+              await sleep(3000);
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
       // Кнопка «Добавить карту»
       const addCardBtn = await page.$('[data-testid="payment-method-button~new-card"], button:has-text("Добавить карту")').catch(() => null);
       if (addCardBtn && await addCardBtn.isVisible().catch(() => false)) {
