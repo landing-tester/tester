@@ -200,9 +200,20 @@ async function runTest(config, emit) {
   let browser, context;
   try {
     if (config.device === 'iphone') {
-      browser = await webkit.launch({ headless: true, args: [] });
+      browser = await webkit.launch({ headless: true });
       context = await browser.newContext({
         ...devices['iPhone 13'],
+        deviceScaleFactor: 2,
+        locale: 'ru-RU',
+        timezoneId: 'Europe/Moscow',
+      });
+    } else if (config.device === 'pixel') {
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
+      });
+      context = await browser.newContext({
+        ...devices['Pixel 5'],
         locale: 'ru-RU',
         timezoneId: 'Europe/Moscow',
       });
@@ -211,13 +222,11 @@ async function runTest(config, emit) {
         headless: true,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
-      const ctxOpts = { locale:'ru-RU', timezoneId:'Europe/Moscow' };
-      if (config.device === 'pixel') {
-        Object.assign(ctxOpts, devices['Pixel 5']);
-      } else {
-        ctxOpts.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-      }
-      context = await browser.newContext(ctxOpts);
+      context = await browser.newContext({
+        locale: 'ru-RU',
+        timezoneId: 'Europe/Moscow',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      });
     }
   } catch (e) {
     emit({ type:'error', message: 'Ошибка запуска браузера: ' + e.message });
@@ -295,10 +304,32 @@ async function runTest(config, emit) {
             await el.scrollIntoViewIfNeeded().catch(() => {});
             const box = await el.boundingBox();
             if (box && box.width > 0) {
-              await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
-              log('Клик CTA: ' + s.slice(0,50), 'ok');
-              ctaClicked = true;
-              await sleep(2500);
+              if (isMobile) {
+                // На мобилке авторизация может открыться в popup-окне
+                const [popup] = await Promise.all([
+                  context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+                  page.mouse.click(box.x + box.width/2, box.y + box.height/2),
+                ]);
+                log('Клик CTA: ' + s.slice(0,50), 'ok');
+                ctaClicked = true;
+                if (popup) {
+                  log('Авторизация открылась в отдельном окне', 'ok');
+                  await popup.waitForLoadState('domcontentloaded').catch(() => {});
+                  await sleep(1500);
+                  if (config.account && config.account.email) {
+                    await doYandexAuth(popup, config, profile, results, emit);
+                    await sleep(2000);
+                  }
+                  break;
+                } else {
+                  await sleep(2000);
+                }
+              } else {
+                await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
+                log('Клик CTA: ' + s.slice(0,50), 'ok');
+                ctaClicked = true;
+                await sleep(2500);
+              }
               break;
             }
           }
@@ -495,17 +526,36 @@ async function runTest(config, emit) {
           log('Клик «Подключить»', 'ok');
           await sleep(3000);
 
-            // SMS подтверждение
-            const smsField = await findInput(trustFrame, [
-              'input[placeholder*="SMS"]', 'input[placeholder*="код"]',
-              'input[data-testid="sms-code"]', 'input[autocomplete="one-time-code"]',
-            ]);
+            // SMS подтверждение — ждём до 15 секунд в нескольких местах
+            log('Проверяем наличие SMS-запроса...', 'info');
+            let smsField = null;
+            let smsFrame = null;
+            for (let si = 0; si < 15; si++) {
+              // ищем на странице
+              smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[data-testid="sms-code"], input[autocomplete="one-time-code"]').catch(() => null);
+              if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+              smsField = null;
+              // ищем в diehard iframe
+              const sf = await findInput(trustFrame, [
+                'input[placeholder*="SMS"]', 'input[placeholder*="код"]',
+                'input[maxlength="6"]', 'input[data-testid="sms-code"]',
+              ]);
+              if (sf) { smsField = sf; smsFrame = trustFrame; break; }
+              // ищем в payment-widget iframe
+              for (const f of page.frames()) {
+                if (f.url().includes('payment-widget')) {
+                  const sf2 = await f.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"]').catch(() => null);
+                  if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
+                }
+              }
+              if (smsField) break;
+              await sleep(1000);
+            }
 
             if (smsField) {
-              log('Ожидаем SMS-код от пользователя...', 'info');
+              log('SMS-поле найдено — ожидаем код...', 'info');
               emit({ type: 'sms_required' });
 
-              // Ждём SMS-код от пользователя через WebSocket (до 3 минут)
               const smsCode = await new Promise((resolve) => {
                 const timer = setTimeout(() => resolve(''), 180000);
                 emit({ type: 'sms_wait', resolve: (code) => { clearTimeout(timer); resolve(code); } });
