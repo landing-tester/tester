@@ -536,7 +536,7 @@ async function runTest(config, emit) {
               let smsFrame = page;
               for (let si = 0; si < 60; si++) {
                 // страница
-                smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                smsField = await page.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
                 if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
                 smsField = null;
                 // все фреймы — ищем любой input
@@ -545,7 +545,7 @@ async function runTest(config, emit) {
                   if (si % 10 === 0) {
                     log('Фрейм: ' + f.url().slice(0, 80), 'info');
                   }
-                  const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i], input[autocomplete="one-time-code"]').catch(() => null);
+                  const sf2 = await f.$('#otp-container input, input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i], input[autocomplete="one-time-code"]').catch(() => null);
                   if (sf2 && await sf2.isVisible().catch(() => false)) {
                     smsField = sf2; smsFrame = f;
                     log('SMS-поле найдено в: ' + f.url().slice(0, 80), 'ok');
@@ -576,7 +576,7 @@ async function runTest(config, emit) {
                 let smsField = null;
                 let smsFrame = page;
                 for (let si = 0; si < 10; si++) {
-                  smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                  smsField = await page.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
                   if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
                   smsField = null;
                   const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]']);
