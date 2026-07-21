@@ -540,12 +540,13 @@ async function runTest(config, emit) {
                 for (const f of page.frames()) {
                   if (si % 10 === 0) log('Фрейм: ' + f.url().slice(0, 80), 'info');
                   const furl = f.url();
-                  // 3DS фрейм банка
+                  // 3DS фрейм банка — ждём именно страницу с формой ввода кода
+                  // trust.yandex.ru — промежуточный, secure.tbank.ru — реальная форма
                   if (furl.includes('secure.tbank.ru') || furl.includes('3dsec') ||
-                      furl.includes('acs/') || furl.includes('challenge')) {
+                      (furl.includes('acs/') && furl.includes('challenge'))) {
                     has3ds = true;
                     smsFrame = f;
-                    log('3DS фрейм банка: ' + furl.slice(0, 80), 'ok');
+                    log('3DS форма банка: ' + furl.slice(0, 80), 'ok');
                     break;
                   }
                   // ищем поле напрямую
