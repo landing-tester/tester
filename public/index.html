@@ -894,18 +894,46 @@ function runTests() {
       document.getElementById('res-summary').textContent = pass + ' / ' + data.results.length + ' прошли';
 
       renderResults();
+
+      // Автопроставляем чек-лист по результатам
+      data.results.forEach(function(r) {
+        if (r.status === 'pass') {
+          if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
+            clStatuses['cl4'] = 'pass';
+          if (r.name === 'Яндекс Метрика')
+            clStatuses['cl6'] = 'pass';
+          if (r.name === 'Персональные посадки')
+            clStatuses['cl8'] = 'pass';
+          if (r.name === 'Оплата' || r.name === 'SMS-подтверждение')
+            clStatuses['cl5'] = 'fail'; // просил SMS — одноклик не включён
+          if (r.name === 'Оплата' && r.note === 'Одноклик')
+            clStatuses['cl5'] = 'pass'; // одноклик работает
+          if (r.name === 'Опция принята')
+            clStatuses['cl7'] = 'pass';
+        }
+      });
+      renderChecklist();
       updateClNav();
+
+      // автоматически переходим на страницу результатов
+      var resNav = document.querySelector('.nav-item[onclick*="results"]');
+      if (resNav) nav('results', resNav);
     }
 
     if (data.type === 'goals') {
       // Автоматически проставляем статусы целей по сервису
       if (data.svc) {
         var goalMap = {};
+        // Извлекаем Goal id из строк вида "Reach goal. Counter: 123. Goal id: auth-success"
+        var firedIds = data.firedGoals.map(function(fg) {
+          var m = fg.match(/Goal id[:\s]+([^\s,\.]+)/i);
+          return m ? m[1].toLowerCase() : fg.toLowerCase();
+        });
+        log('Сработавшие цели: ' + firedIds.join(', '), 'info');
         GOALS_DATA.forEach(function(g) {
           if (g.svc === data.svc && g.has) {
-            // Ищем совпадение по названию цели
-            var fired = data.firedGoals.some(function(fg) {
-              return fg.toLowerCase() === g.goal.toLowerCase();
+            var fired = firedIds.some(function(id) {
+              return id === g.goal.toLowerCase() || g.goal.toLowerCase().includes(id) || id.includes(g.goal.toLowerCase());
             });
             goalStatuses[g.id] = fired ? 'pass' : 'idle';
           }
@@ -923,6 +951,10 @@ function runTests() {
     }
 
     if (data.type === 'done') {
+      var failCnt = results.filter(function(r){ return r.status === 'fail'; }).length;
+      document.getElementById('prog-chip').textContent = failCnt > 0 ? failCnt + ' ошибок' : 'Всё прошло';
+      document.getElementById('main-prog').className = failCnt > 0 ? 'main-prog-fill done-fail' : 'main-prog-fill done-ok';
+      if (document.getElementById('scanner-line')) document.getElementById('scanner-line').classList.remove('active');
       finishRun();
     }
 
