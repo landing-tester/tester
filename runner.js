@@ -535,31 +535,42 @@ async function runTest(config, emit) {
               let smsField = null;
               let smsFrame = page;
               for (let si = 0; si < 60; si++) {
-                // страница
-                smsField = await page.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
-                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
-                smsField = null;
-                // все фреймы — ищем любой input
+                // проверяем 3DS фрейм банка и ищем SMS поле
+                let has3ds = false;
                 for (const f of page.frames()) {
-                  // диагностика каждые 10 секунд
-                  if (si % 10 === 0) {
-                    log('Фрейм: ' + f.url().slice(0, 80), 'info');
-                  }
-                  const sf2 = await f.$('#otp-container input, input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i], input[autocomplete="one-time-code"]').catch(() => null);
-                  if (sf2 && await sf2.isVisible().catch(() => false)) {
-                    smsField = sf2; smsFrame = f;
-                    log('SMS-поле найдено в: ' + f.url().slice(0, 80), 'ok');
+                  if (si % 10 === 0) log('Фрейм: ' + f.url().slice(0, 80), 'info');
+                  const furl = f.url();
+                  // 3DS фрейм банка
+                  if (furl.includes('secure.tbank.ru') || furl.includes('3dsec') ||
+                      furl.includes('acs/') || furl.includes('challenge')) {
+                    has3ds = true;
+                    smsFrame = f;
+                    log('3DS фрейм банка: ' + furl.slice(0, 80), 'ok');
                     break;
                   }
+                  // ищем поле напрямую
+                  try {
+                    const sf2 = await f.$('#otp-container input, input[maxlength="6"], input[name*="otp"], input[name*="code"], input[id*="otp"]');
+                    if (sf2 && await sf2.isVisible().catch(() => false)) {
+                      smsField = sf2; smsFrame = f;
+                      log('SMS-поле: ' + furl.slice(0, 80), 'ok');
+                      break;
+                    }
+                  } catch (_) {}
                 }
-                if (smsField) break;
+                if (smsField || has3ds) break;
+                // страница напрямую
+                smsField = await page.$('#otp-container input, input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+                smsField = null;
                 await sleep(1000);
               }
-
               if (smsField) {
-                log('SMS-поле появилось — показываем окошко для ввода кода', 'ok');
+                log('SMS-поле найдено — показываем окошко', 'ok');
+              } else if (smsFrame && smsFrame !== page) {
+                log('3DS фрейм банка найден — показываем окошко', 'ok');
               } else {
-                log('SMS-поле не появилось за 60 секунд — всё равно показываем окошко', 'warn');
+                log('SMS-поле не найдено — всё равно показываем окошко', 'warn');
               }
 
               // Теперь показываем модалку
@@ -592,14 +603,34 @@ async function runTest(config, emit) {
                 }
 
                 if (smsField) {
-                  await smsField.click(); await sleep(200);
+                  await smsField.click({ force: true }); await sleep(200);
                   await smsField.type(smsCode, { delay: 80 });
                   log('SMS-код введён в поле', 'ok');
                   await sleep(500);
-                  await page.keyboard.press('Enter');
+                  await smsField.press('Enter');
+                } else if (smsFrame && smsFrame !== page) {
+                  // 3DS фрейм — фокусируем и вводим через keyboard
+                  log('Вводим код в 3DS фрейм банка...', 'info');
+                  try {
+                    // пробуем найти любой input в фрейме
+                    const anyInput = await smsFrame.$('input').catch(() => null);
+                    if (anyInput) {
+                      await anyInput.click({ force: true }); await sleep(200);
+                      await anyInput.type(smsCode, { delay: 80 });
+                      await anyInput.press('Enter');
+                      log('SMS-код введён в 3DS форму', 'ok');
+                    } else {
+                      await page.keyboard.type(smsCode, { delay: 80 });
+                      await page.keyboard.press('Enter');
+                      log('SMS-код введён через клавиатуру', 'ok');
+                    }
+                  } catch (_) {
+                    await page.keyboard.type(smsCode, { delay: 80 });
+                    await page.keyboard.press('Enter');
+                    log('SMS-код введён через клавиатуру (fallback)', 'ok');
+                  }
                 } else {
-                  // поле не найдено — вводим через клавиатуру напрямую
-                  log('Поле SMS не найдено — вводим через клавиатуру', 'info');
+                  log('Вводим код через клавиатуру', 'info');
                   await page.keyboard.type(smsCode, { delay: 80 });
                   await sleep(300);
                   await page.keyboard.press('Enter');
