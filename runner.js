@@ -539,14 +539,17 @@ async function runTest(config, emit) {
                 smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
                 if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
                 smsField = null;
-                // diehard iframe
-                const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]', 'input[placeholder*="SMS"]']);
-                if (sf) { smsField = sf; smsFrame = trustFrame; break; }
-                // payment-widget iframe
+                // все фреймы — ищем любой input
                 for (const f of page.frames()) {
-                  if (f.url().includes('payment-widget')) {
-                    const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i]').catch(() => null);
-                    if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
+                  // диагностика каждые 10 секунд
+                  if (si % 10 === 0) {
+                    log('Фрейм: ' + f.url().slice(0, 80), 'info');
+                  }
+                  const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i], input[autocomplete="one-time-code"]').catch(() => null);
+                  if (sf2 && await sf2.isVisible().catch(() => false)) {
+                    smsField = sf2; smsFrame = f;
+                    log('SMS-поле найдено в: ' + f.url().slice(0, 80), 'ok');
+                    break;
                   }
                 }
                 if (smsField) break;
