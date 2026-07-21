@@ -530,7 +530,36 @@ async function runTest(config, emit) {
             const isPaidCard = config.account && config.account.type === 'paid-card';
 
             if (!isPaidCard) {
-              // Для новичков всегда показываем модалку — банк должен прислать SMS
+              // Сначала ждём появления SMS-поля на странице (до 60 секунд)
+              log('Ждём SMS-поле на странице...', 'info');
+              let smsField = null;
+              let smsFrame = page;
+              for (let si = 0; si < 60; si++) {
+                // страница
+                smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+                smsField = null;
+                // diehard iframe
+                const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]', 'input[placeholder*="SMS"]']);
+                if (sf) { smsField = sf; smsFrame = trustFrame; break; }
+                // payment-widget iframe
+                for (const f of page.frames()) {
+                  if (f.url().includes('payment-widget')) {
+                    const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i], input[placeholder*="SMS" i]').catch(() => null);
+                    if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
+                  }
+                }
+                if (smsField) break;
+                await sleep(1000);
+              }
+
+              if (smsField) {
+                log('SMS-поле появилось — показываем окошко для ввода кода', 'ok');
+              } else {
+                log('SMS-поле не появилось за 60 секунд — всё равно показываем окошко', 'warn');
+              }
+
+              // Теперь показываем модалку
               log('Ждём SMS-код от пользователя...', 'info');
               emit({ type: 'sms_required' });
 
