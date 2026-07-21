@@ -917,26 +917,26 @@ function runTests() {
       });
       renderChecklist();
       updateClNav();
-
-      // автоматически переходим на страницу результатов
-      var resNav = document.querySelector('.nav-item[onclick*="results"]');
-      if (resNav) nav('results', resNav);
     }
 
     if (data.type === 'goals') {
       // Автоматически проставляем статусы целей по сервису
       if (data.svc) {
         var goalMap = {};
-        // Извлекаем Goal id из строк вида "Reach goal. Counter: 123. Goal id: auth-success"
+        // firedGoals уже содержит извлечённые Goal id
+        // Нормализуем: убираем пробелы и приводим к нижнему регистру
         var firedIds = data.firedGoals.map(function(fg) {
+          // Пробуем извлечь Goal id из строки "Reach goal. Counter: 123. Goal id: auth-success"
           var m = fg.match(/Goal id[:\s]+([^\s,\.]+)/i);
-          return m ? m[1].toLowerCase() : fg.toLowerCase();
+          var id = m ? m[1] : fg;
+          return id.trim().toLowerCase();
         });
         log('Сработавшие цели: ' + firedIds.join(', '), 'info');
         GOALS_DATA.forEach(function(g) {
           if (g.svc === data.svc && g.has) {
+            var goalLower = g.goal.toLowerCase();
             var fired = firedIds.some(function(id) {
-              return id === g.goal.toLowerCase() || g.goal.toLowerCase().includes(id) || id.includes(g.goal.toLowerCase());
+              return id === goalLower;
             });
             goalStatuses[g.id] = fired ? 'pass' : 'idle';
           }
@@ -958,6 +958,10 @@ function runTests() {
       document.getElementById('prog-chip').textContent = failCnt > 0 ? failCnt + ' ошибок' : 'Всё прошло';
       document.getElementById('main-prog').className = failCnt > 0 ? 'main-prog-fill done-fail' : 'main-prog-fill done-ok';
       if (document.getElementById('scanner-line')) document.getElementById('scanner-line').classList.remove('active');
+      // перерендериваем и переходим на результаты
+      renderResults();
+      var resNav = document.querySelector('.nav-item[onclick*="results"]');
+      if (resNav) nav('results', resNav);
       finishRun();
     }
 
