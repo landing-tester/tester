@@ -916,6 +916,12 @@ function runTests() {
       }
     }
 
+    if (data.type === 'sms_required') {
+      waitForSmsCode('Подтверждение оплаты').then(function(code) {
+        ws.send(JSON.stringify({ type: 'sms_code', code: code || '' }));
+      });
+    }
+
     if (data.type === 'done') {
       finishRun();
     }
