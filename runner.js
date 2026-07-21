@@ -436,44 +436,64 @@ async function runTest(config, emit) {
 
         await sleep(1000);
 
-        // Ввод карты
+        // Ввод карты — используем точные ID как в рабочем test.js
         const cardNum = config.card.number.replace(/\s/g, '');
         const cardExpiry = config.card.expiry || '12/27';
         const cardCvc = config.card.cvc || '123';
+        const expParts = cardExpiry.split('/');
+        const expMonth = (expParts[0] || '').trim();
+        const expYear  = (expParts[1] || '').trim();
 
-        const cardField = await findInput(trustFrame, [
-          'input[placeholder*="Номер"]', 'input[name*="card"]',
-          'input[data-testid="card-number"]', 'input[autocomplete="cc-number"]',
-          'input[type="tel"]', 'input[inputmode="numeric"]',
-        ]);
+        // Ждём появления поля номера карты
+        await trustFrame.waitForSelector('input#regular-card-number-input', { timeout: 10000 })
+          .catch(() => { log('Поле карты не появилось', 'warn'); });
+        await sleep(300);
 
-        if (cardField) {
-          await cardField.click(); await sleep(300);
-          await cardField.type(cardNum, { delay: 80 });
-          log('Номер карты введён', 'ok');
-          await sleep(500);
+        const numEl = await trustFrame.$('input#regular-card-number-input');
+        if (numEl) {
+          await numEl.click({ force: true }); await sleep(200);
+          await numEl.fill(cardNum);
+          log('Номер карты введён', 'ok'); await sleep(300);
+        } else { log('Поле номера карты не найдено', 'warn'); }
 
-          // Срок
-          const expField = await findInput(trustFrame, [
-            'input[placeholder*="ММ/ГГ"]', 'input[placeholder*="MM/YY"]',
-            'input[data-testid="card-expiry"]', 'input[autocomplete="cc-exp"]',
-          ]);
-          if (expField) { await expField.click(); await expField.type(cardExpiry, { delay: 80 }); log('Срок введён', 'ok'); await sleep(300); }
+        const expMonthEl = await trustFrame.$('input#regular-card-month-input');
+        if (expMonthEl) {
+          await expMonthEl.click({ force: true }); await sleep(200);
+          await expMonthEl.fill(expMonth);
+          log('Месяц: ' + expMonth, 'ok'); await sleep(200);
+        }
 
-          // CVC
-          const cvcField = await findInput(trustFrame, [
-            'input[placeholder*="CVC"]', 'input[placeholder*="CVV"]',
-            'input[data-testid="card-cvc"]', 'input[autocomplete="cc-csc"]',
-          ]);
-          if (cvcField) { await cvcField.click(); await cvcField.type(cardCvc, { delay: 80 }); log('CVC введён', 'ok'); await sleep(300); }
+        const expYearEl = await trustFrame.$('input#regular-card-year-input');
+        if (expYearEl) {
+          await expYearEl.click({ force: true }); await sleep(200);
+          await expYearEl.fill(expYear);
+          log('Год: ' + expYear, 'ok'); await sleep(200);
+        }
 
-          // Кнопка «Подключить»
-          const connectSel = sel(profile, 'connectBtn', '[data-testid="trust-card-form-submit-button"], button:has-text("Подключить"), button:has-text("Оформить")', config.selectors);
-          const connectBtn = await findInput(trustFrame, connectSel.split(',').map(s => s.trim()));
-          if (connectBtn) {
-            await connectBtn.click({ force: true });
-            log('Клик «Подключить»', 'ok');
-            await sleep(3000);
+        const cvcEl = await trustFrame.$('.field-container__cvv_regular input, .field-container__cvv input');
+        if (cvcEl) {
+          await cvcEl.click({ force: true }); await sleep(200);
+          await cvcEl.fill(cardCvc);
+          log('CVC введён', 'ok'); await sleep(300);
+        }
+
+        await sleep(1000);
+
+        // Кнопка «Подключить» — ищем в payment-widget iframe
+        let widgetFrame = null;
+        for (const f of page.frames()) {
+          if (f.url().includes('payment-widget')) { widgetFrame = f; break; }
+        }
+        const connectBtnSel = sel(profile, 'connectBtn',
+          'button[data-testid="trust-card-form-submit-button"], button:has-text("Подключить")',
+          config.selectors);
+        const connectBtn = (widgetFrame ? await widgetFrame.$(connectBtnSel).catch(() => null) : null)
+          || await page.$(connectBtnSel).catch(() => null);
+
+        if (connectBtn) {
+          await connectBtn.click({ force: true });
+          log('Клик «Подключить»', 'ok');
+          await sleep(3000);
 
             // SMS подтверждение
             const smsField = await findInput(trustFrame, [
@@ -566,10 +586,6 @@ async function runTest(config, emit) {
             log('Кнопка «Подключить» не найдена', 'warn');
             result('Оплата', 'warn', 'Кнопка не найдена');
           }
-        } else {
-          log('Поле карты не найдено', 'warn');
-          result('Виджет открылся', 'warn', 'Поле карты не найдено');
-        }
       } else {
         log('Виджет не найден', 'warn');
         result('Виджет открылся', 'warn', 'Не отображается');
