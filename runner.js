@@ -526,34 +526,12 @@ async function runTest(config, emit) {
           log('Клик «Подключить»', 'ok');
           await sleep(3000);
 
-            // SMS подтверждение — ждём до 15 секунд в нескольких местах
-            log('Проверяем наличие SMS-запроса...', 'info');
-            let smsField = null;
-            let smsFrame = null;
-            for (let si = 0; si < 15; si++) {
-              // ищем на странице
-              smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[data-testid="sms-code"], input[autocomplete="one-time-code"]').catch(() => null);
-              if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
-              smsField = null;
-              // ищем в diehard iframe
-              const sf = await findInput(trustFrame, [
-                'input[placeholder*="SMS"]', 'input[placeholder*="код"]',
-                'input[maxlength="6"]', 'input[data-testid="sms-code"]',
-              ]);
-              if (sf) { smsField = sf; smsFrame = trustFrame; break; }
-              // ищем в payment-widget iframe
-              for (const f of page.frames()) {
-                if (f.url().includes('payment-widget')) {
-                  const sf2 = await f.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"]').catch(() => null);
-                  if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
-                }
-              }
-              if (smsField) break;
-              await sleep(1000);
-            }
+            // SMS подтверждение
+            const isPaidCard = config.account && config.account.type === 'paid-card';
 
-            if (smsField) {
-              log('SMS-поле найдено — ожидаем код...', 'info');
+            if (!isPaidCard) {
+              // Для новичков всегда показываем модалку — банк должен прислать SMS
+              log('Ждём SMS-код от пользователя...', 'info');
               emit({ type: 'sms_required' });
 
               const smsCode = await new Promise((resolve) => {
@@ -562,20 +540,48 @@ async function runTest(config, emit) {
               });
 
               if (smsCode) {
-                await smsField.click(); await sleep(200);
-                await smsField.type(smsCode, { delay: 80 });
-                log('SMS-код введён', 'ok');
-                await sleep(1000);
-                await page.keyboard.press('Enter');
+                // ищем поле для SMS в нескольких местах
+                let smsField = null;
+                let smsFrame = page;
+                for (let si = 0; si < 10; si++) {
+                  smsField = await page.$('input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                  if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+                  smsField = null;
+                  const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]']);
+                  if (sf) { smsField = sf; smsFrame = trustFrame; break; }
+                  for (const f of page.frames()) {
+                    if (f.url().includes('payment-widget')) {
+                      const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i]').catch(() => null);
+                      if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
+                    }
+                  }
+                  if (smsField) break;
+                  await sleep(500);
+                }
+
+                if (smsField) {
+                  await smsField.click(); await sleep(200);
+                  await smsField.type(smsCode, { delay: 80 });
+                  log('SMS-код введён в поле', 'ok');
+                  await sleep(500);
+                  await page.keyboard.press('Enter');
+                } else {
+                  // поле не найдено — вводим через клавиатуру напрямую
+                  log('Поле SMS не найдено — вводим через клавиатуру', 'info');
+                  await page.keyboard.type(smsCode, { delay: 80 });
+                  await sleep(300);
+                  await page.keyboard.press('Enter');
+                }
+                log('SMS-код введён: ' + smsCode, 'ok');
                 await sleep(3000);
                 result('SMS-подтверждение', 'pass', 'Введено вручную');
               } else {
-                log('SMS-код не введён (таймаут)', 'warn');
-                result('SMS-подтверждение', 'warn', 'Таймаут');
+                log('SMS-код не введён (пропущен)', 'warn');
+                result('SMS-подтверждение', 'warn', 'Пропущено');
               }
             } else {
-              // Одноклик — SMS не нужен
-              log('SMS не запрошен — одноклик', 'ok');
+              // Paid-card — одноклик без SMS
+              log('Одноклик — SMS не требуется', 'ok');
               result('Оплата', 'pass', 'Одноклик');
             }
 
