@@ -890,27 +890,30 @@ function runTests() {
       document.getElementById('prog-pct').textContent  = '100%';
       document.getElementById('last-run-time').textContent  = new Date().toLocaleTimeString('ru');
       document.getElementById('last-run-fails').textContent = fail;
-      document.getElementById('nc-results').textContent = data.results.length;
+      var passN = data.results.filter(function(r){ return r.status==='pass'; }).length;
+      var failN = data.results.filter(function(r){ return r.status==='fail'; }).length;
+      var elR = document.getElementById('nc-results');
+      elR.textContent = data.results.length;
+      if (failN > 0) { elR.className = 'ni-count bad'; elR.style.background=''; elR.style.color=''; }
+      else { elR.className = 'ni-count'; elR.style.background='rgba(34,211,163,.15)'; elR.style.color='var(--green)'; }
       document.getElementById('res-summary').textContent = pass + ' / ' + data.results.length + ' прошли';
 
       renderResults();
 
-      // Автопроставляем чек-лист по результатам
+      // Автопроставление чек-листа
       data.results.forEach(function(r) {
-        if (r.status === 'pass') {
-          if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
-            clStatuses['cl4'] = 'pass';
-          if (r.name === 'Яндекс Метрика')
-            clStatuses['cl6'] = 'pass';
-          if (r.name === 'Персональные посадки')
-            clStatuses['cl8'] = 'pass';
-          if (r.name === 'Оплата' || r.name === 'SMS-подтверждение')
-            clStatuses['cl5'] = 'fail'; // просил SMS — одноклик не включён
-          if (r.name === 'Оплата' && r.note === 'Одноклик')
-            clStatuses['cl5'] = 'pass'; // одноклик работает
-          if (r.name === 'Опция принята')
-            clStatuses['cl7'] = 'pass';
-        }
+        if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
+          clStatuses['cl4'] = r.status === 'pass' ? 'pass' : 'fail';
+        if (r.name === 'Яндекс Метрика')
+          clStatuses['cl6'] = r.status === 'pass' ? 'pass' : 'fail';
+        if (r.name === 'Персональные посадки')
+          clStatuses['cl8'] = r.status === 'pass' ? 'pass' : 'fail';
+        if (r.name === 'SMS-подтверждение')
+          clStatuses['cl5'] = r.status === 'pass' ? 'fail' : 'idle'; // был SMS — одноклик не включён
+        if (r.name === 'Оплата' && r.note === 'Одноклик')
+          clStatuses['cl5'] = 'pass'; // одноклик работает
+        if (r.name === 'Опция принята')
+          clStatuses['cl7'] = r.status === 'pass' ? 'pass' : r.status === 'warn' ? 'idle' : 'fail';
       });
       renderChecklist();
       updateClNav();
@@ -1113,9 +1116,20 @@ function updateGoalCounts() {
   document.getElementById('g-idle').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='idle'; }).length + ' —';
 }
 function updateGoalNav() {
-  var f = GOALS_DATA.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
+  var ch = GOALS_DATA.filter(function(g){ return g.has; });
+  var pass = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
+  var fail = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
   var el = document.getElementById('nc-goals');
-  el.textContent = f || '0'; el.className = f>0 ? 'ni-count bad' : 'ni-count';
+  if (fail > 0) {
+    el.textContent = fail; el.className = 'ni-count bad';
+    el.style.background = ''; el.style.color = '';
+  } else if (pass > 0) {
+    el.textContent = pass; el.className = 'ni-count';
+    el.style.background = 'rgba(34,211,163,.15)'; el.style.color = 'var(--green)';
+  } else {
+    el.textContent = '0'; el.className = 'ni-count';
+    el.style.background = ''; el.style.color = '';
+  }
 }
 function filterGoals(s, btn) {
   goalsFilter = s;
@@ -1198,7 +1212,16 @@ function updateClNav() {
   var ok = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='pass'; }).length;
   var nd = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='idle'; }).length;
   var el = document.getElementById('nc-cl');
-  el.textContent = f||'0'; el.className = f>0 ? 'ni-count bad' : 'ni-count';
+  if (f > 0) {
+    el.textContent = f; el.className = 'ni-count bad';
+    el.style.background = ''; el.style.color = '';
+  } else if (ok > 0) {
+    el.textContent = ok; el.className = 'ni-count';
+    el.style.background = 'rgba(34,211,163,.15)'; el.style.color = 'var(--green)';
+  } else {
+    el.textContent = '0'; el.className = 'ni-count';
+    el.style.background = ''; el.style.color = '';
+  }
   document.getElementById('cl-ok').textContent = ok+' OK';
   document.getElementById('cl-ng').textContent = f+' Fail';
   document.getElementById('cl-nd').textContent = nd+' —';
