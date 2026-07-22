@@ -242,13 +242,17 @@ async function runTest(config, emit) {
 
   const page = await context.newPage();
 
+  // Строгий фильтр: реальные события Яндекс.Метрики, а не любой текст со словом "goal"
+  // (например, у Яндекс.Паспорта в служебных URL встречается goal=https://..., это не про Метрику)
+  const METRIKA_GOAL_RE = /Reach goal\.|Goal id\s*[:=]|ym\(\s*\d+\s*,\s*['"]reachGoal['"]/i;
+
   // CDP перехват Метрики
   try {
     const cdp = await context.newCDPSession(page);
     await cdp.send('Runtime.enable');
     cdp.on('Runtime.consoleAPICalled', event => {
       const text = (event.args||[]).map(a => a.value || a.description || '').join(' ');
-      if (/reachGoal|Goal|ym\./i.test(text)) {
+      if (METRIKA_GOAL_RE.test(text)) {
         ymGoals.push(text);
         log('Метрика: ' + text.slice(0, 100), 'ok');
         if (svc) emit({ type:'goals', svc, firedGoals: [text] });
@@ -258,7 +262,7 @@ async function runTest(config, emit) {
 
   page.on('console', msg => {
     const text = msg.text();
-    if (/reachGoal|Goal|ym\.|Metrika/i.test(text)) {
+    if (METRIKA_GOAL_RE.test(text)) {
       ymGoals.push(text);
       log('Метрика: ' + text.slice(0, 100), 'ok');
       if (svc) emit({ type:'goals', svc, firedGoals: [text] });
