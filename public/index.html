@@ -130,10 +130,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .result-card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:6px}
 .rc-title{font-size:12px;font-weight:600;font-family:var(--font-head)}
 .rc-counts{display:flex;gap:10px;font-size:10px;font-family:var(--font-mono)}
-.result-table{width:100%;border-collapse:collapse}
+.result-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .result-table th{text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 16px;cursor:pointer;user-select:none;border-bottom:1px solid var(--line);white-space:nowrap;transition:color .15s}
 .result-table th:hover{color:var(--text)}
-.result-table td{padding:9px 16px;font-size:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.result-table td{padding:9px 16px;font-size:12px;border-bottom:1px solid var(--line);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .result-table tr:last-child td{border-bottom:none}
 .result-table tbody tr:hover td{background:var(--bg3)}
 .result-table tbody tr.rt-fail{background:rgba(255,87,87,.06)}
@@ -185,35 +185,25 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .cl-summary{display:flex;gap:8px;align-items:center;padding:10px 0 0;border-top:1px solid var(--line);margin-top:4px}
 
 /* GOALS */
-.goals-svc-block{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
-.goals-svc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.goals-svc-title{font-size:12px;font-weight:500}
-.goals-svc-counts{display:flex;gap:10px;font-size:10px}
-.goals-prog-bar{height:3px;background:var(--bg4);border-radius:2px;overflow:hidden;display:flex;margin-bottom:10px}
-.goals-prog-pass{background:var(--green)}
-.goals-prog-fail{background:var(--red)}
-.goals-dots{display:flex;flex-wrap:wrap;gap:6px}
-.goals-dot-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);cursor:pointer;padding:2px 0}
-.goals-dot-item:hover .goals-dot-label{color:var(--text)}
-.goals-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;transition:all .15s}
-.goals-dot.idle{background:var(--faint)}
-.goals-dot.pass{background:var(--green)}
-.goals-dot.fail{background:var(--red)}
-.goals-dot-label{line-height:1.4}
-#goals-table tbody tr{border-bottom:1px solid var(--line)}
-#goals-table tbody tr:hover{background:var(--bg3)}
-#goals-table td{padding:9px 14px;vertical-align:middle}
-.goal-name{font-family:var(--font-mono);font-size:11px;color:var(--accent);background:rgba(124,106,255,.08);padding:2px 8px;border-radius:4px;white-space:nowrap}
-.goal-none{font-family:var(--font-mono);font-size:11px;color:var(--faint);font-style:italic}
-.goal-url{font-family:var(--font-mono);font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
-.goal-url:hover{color:var(--blue)}
-.goal-btn{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-family:var(--font-head);font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
-.goal-btn.idle{background:var(--bg4);color:var(--muted)}
-.goal-btn.pass{background:rgba(34,211,163,.15);color:var(--green)}
-.goal-btn.fail{background:rgba(255,87,87,.15);color:var(--red)}
-.goal-note{background:transparent;border:none;border-bottom:1px solid var(--faint);color:var(--muted);font-family:var(--font-mono);font-size:11px;outline:none;width:100%;padding:2px 4px}
-.goal-note:focus{border-color:var(--accent);color:var(--text)}
-.gf-active{background:var(--bg3);color:var(--text);border-color:var(--line2)}
+.goals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.goal-card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.goal-card-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.goal-card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.goal-card-info{flex:1;min-width:0}
+.goal-card-name{font-size:13px;font-weight:600;font-family:var(--font-head)}
+.goal-card-sub{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.goal-ring{width:38px;height:38px;border-radius:50%;position:relative;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background 1s ease}
+.goal-ring::before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--bg2)}
+.goal-ring-val{position:relative;z-index:1;font-size:10px;font-weight:700;font-family:var(--font-mono)}
+.goal-list{display:flex;flex-direction:column}
+.goal-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.goal-item:first-child{border-top:none}
+.goal-item-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;font-weight:700;transition:all .15s}
+.goal-item-icon.pass{background:rgba(34,211,163,.15);color:var(--green)}
+.goal-item-icon.fail{background:rgba(255,87,87,.15);color:var(--red)}
+.goal-item-icon.idle{background:var(--bg4);color:var(--faint)}
+.goal-item-label{flex:1;font-size:12px;color:var(--text)}
+.goal-item-id{font-size:10px;color:var(--faint);font-family:var(--font-mono);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* LOG */
 .log-area{background:var(--bg);border-radius:var(--r2);padding:14px;font-family:var(--font-mono);font-size:12px;line-height:1.8;max-height:440px;overflow-y:auto;border:1px solid var(--line)}
@@ -375,27 +365,15 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
 <!-- GOALS -->
 <div class="page" id="page-goals">
-  <div class="card">
-    <div class="card-head"><h3>Проверка через Яндекс Метрику</h3><span class="chip">_ym_debug=2</span></div>
-    <div class="card-body" style="flex-direction:row;flex-wrap:wrap;gap:8px;padding:14px 18px">
-      <button class="btn btn-primary" onclick="openDbgUrl(getLandingUrl())">↗ Открыть с _ym_debug=2</button>
-      <button class="btn btn-ghost" onclick="window.open('https://yandex.ru/support/metrica/ru/general/check-goal','_blank')">Документация ↗</button>
-    </div>
+  <div class="stats-row">
+    <div class="stat-card stat-green"><div class="sc-label">Прошли</div><div class="sc-val" id="g-pass">0</div></div>
+    <div class="stat-card stat-red"><div class="sc-label">Упали</div><div class="sc-val" id="g-fail">0</div></div>
+    <div class="stat-card stat-amber"><div class="sc-label">Не проверено</div><div class="sc-val" id="g-idle">0</div></div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-    <div style="display:flex;gap:6px">
-      <span class="badge badge-pass" id="g-pass">0 OK</span>
-      <span class="badge badge-fail" id="g-fail">0 Fail</span>
-      <span class="badge badge-idle" id="g-idle">0 —</span>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="markAllGoals('pass')">✓ Все OK</button>
-      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="markAllGoals('fail')">✗ Все упали</button>
-      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="resetGoals()">↺ Сброс</button>
-      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportGoals()">⬇ CSV</button>
-    </div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportGoals()">⬇ CSV</button>
   </div>
-  <div id="goals-cards-grid" style="display:flex;flex-direction:column;gap:12px"></div>
+  <div class="goals-grid" id="goals-cards-grid"></div>
 </div>
 
 <!-- CHECKLIST -->
@@ -551,26 +529,18 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 var BROWSERS = ['Chromium','Яндекс','iPhone','Pixel'];
 
 var GOALS_DATA = [
-  {id:'m1',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Клик на кнопку (оффер)',goal:'Нет цели',has:false,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m2',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Клик на поп-ап',goal:'AUTH_FORM_OPEN',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m3',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m4',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Скип поп-ап',goal:'skip_popup_auth',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m5',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m6',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная оплата',goal:'PaymentCompleted',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'k1',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Клик на кнопку (оффер)',goal:'AUTH_FORM_OPEN',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k2',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Клик на поп-ап',goal:'Нет поп-апа',has:false,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k3',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная авторизация',goal:'AUTH_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k4',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Скип поп-ап',goal:'Нет поп-апа',has:false,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k5',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k6',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Закрытие виджета',goal:'closed_widget',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k7',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная оплата',goal:'PLUS_PURCHASE_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'b1',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Клик на кнопку (оффер)',goal:'Нет цели',has:false,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b2',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Клик на поп-ап',goal:'AUTH_FORM_OPEN',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b3',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b4',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Скип поп-ап',goal:'Нет цели',has:false,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b5',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b6',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Закрытие виджета',goal:'closed_widget',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b7',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная оплата',goal:'PaywallScreen.Widget.PaymentSuccess',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'m1',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m2',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m3',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная оплата',goal:'PaymentCompleted',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'k1',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная авторизация',goal:'AUTH_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k2',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k3',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная оплата',goal:'PLUS_PURCHASE_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'b1',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b2',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b3',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная оплата',goal:'PaywallScreen.Widget.PaymentSuccess',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'p1',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная авторизация',goal:'auth_success',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p2',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Открытие виджета',goal:'CTA_click_growth',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p3',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная оплата',goal:'pluslandingpaymentsucess',altGoals:['lpcpluslandingpaymentsucess','CTA_tariff_buy'],has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
 ];
 
 // Чек-лист из PDF
@@ -587,7 +557,7 @@ var CHECKLIST = [
 
 
 var logs = [], results = [], running = false, failCount = 0;
-var goalStatuses = {}, goalNotes = {}, goalsFilter = 'all';
+var goalStatuses = {}, goalNotes = {};
 var clStatuses = {}, clNotes = {};
 
 
@@ -830,9 +800,7 @@ function runTests() {
   ['cl4','cl5','cl6','cl7','cl8'].forEach(function(id){ clStatuses[id] = 'idle'; });
   renderChecklist();
   updateClNav();
-  GOALS_DATA.forEach(function(g){ goalStatuses[g.id] = 'idle'; });
-  renderGoals();
-  updateGoalNav();
+  resetGoals();
   document.getElementById('log-area').innerHTML = '';
   document.getElementById('nc-log').textContent = '0';
   document.getElementById('btn-run').disabled = true;
@@ -947,18 +915,24 @@ function runTests() {
       // Автоматически проставляем статусы целей по сервису — накопительно,
       // т.к. сервер теперь шлёт событие сразу при срабатывании каждой цели
       if (data.svc) {
-        var firedIds = data.firedGoals.map(function(fg) {
-          // Пробуем извлечь Goal id из строки "Reach goal. Counter: 123. Goal id: auth-success"
-          var m = fg.match(/Goal id[:\s]+([^\s,\.]+)/i);
-          var id = m ? m[1] : fg;
-          return id.trim().toLowerCase();
-        });
+        function extractGoalId(fg) {
+          // Формат 1: "Reach goal. Counter: 123. Goal id: auth-success"
+          var m = fg.match(/Goal id\s*[:=]\s*([^\s,\.]+)/i);
+          if (m) return m[1].trim().toLowerCase();
+          // Формат 2: ym(12345, 'reachGoal', 'auth-success')
+          m = fg.match(/reachGoal['"]\s*,\s*['"]([^'"]+)['"]/i);
+          if (m) return m[1].trim().toLowerCase();
+          // Иначе — используем строку как есть
+          return fg.trim().toLowerCase();
+        }
+        var firedIds = data.firedGoals.map(extractGoalId);
         log('Сработавшие цели: ' + firedIds.join(', '), 'info');
         GOALS_DATA.forEach(function(g) {
           if (g.svc === data.svc && g.has) {
-            var goalLower = g.goal.toLowerCase();
-            var fired = firedIds.some(function(id) {
-              return id === goalLower;
+            var candidates = [g.goal].concat(g.altGoals || []).map(function(x){ return x.toLowerCase(); });
+            var fired = candidates.some(function(goalLower) {
+              return firedIds.some(function(id) { return id === goalLower; }) ||
+                data.firedGoals.some(function(fg) { return fg.toLowerCase().indexOf(goalLower) !== -1; });
             });
             if (fired) goalStatuses[g.id] = 'pass';
           }
@@ -1097,9 +1071,9 @@ function renderResults() {
       var bl = t.status==='pass'?'OK':t.status==='fail'?'Fail':t.status==='warn'?'Warn':'Skip';
       var rowCls = t.status==='fail' ? 'rt-fail' : t.status==='warn' ? 'rt-warn' : 'rt-pass';
       return '<tr class="'+rowCls+'">' +
-        '<td style="width:70px"><span class="badge '+bc+'">'+bl+'</span></td>' +
-        '<td class="tr-name">'+t.name+'</td>' +
-        '<td style="color:var(--muted)">'+(t.note || '—')+'</td>' +
+        '<td><span class="badge '+bc+'">'+bl+'</span></td>' +
+        '<td class="tr-name" title="'+t.name.replace(/"/g,'&quot;')+'">'+t.name+'</td>' +
+        '<td style="color:var(--muted)" title="'+(t.note||'').replace(/"/g,'&quot;')+'">'+(t.note || '—')+'</td>' +
         '</tr>';
     }).join('');
 
@@ -1114,8 +1088,9 @@ function renderResults() {
         '</div>' +
       '</div>' +
       '<table class="result-table">' +
+        '<colgroup><col style="width:80px"><col><col style="width:32%"></colgroup>' +
         '<thead><tr>' +
-          '<th style="width:70px" onclick="sortResultsBy(\'status\')">Статус'+arrow('status')+'</th>' +
+          '<th onclick="sortResultsBy(\'status\')">Статус'+arrow('status')+'</th>' +
           '<th onclick="sortResultsBy(\'name\')">Тест'+arrow('name')+'</th>' +
           '<th>Примечание</th>' +
         '</tr></thead>' +
@@ -1157,9 +1132,10 @@ function renderGoals() {
   var grid = document.getElementById('goals-cards-grid');
   if (!grid) return;
   var services = [
-    {svc:'music', label:'Музыка', emoji:'🎵', color:'#60a5fa', url:'music.yandex.ru/promo/…'},
-    {svc:'kp',    label:'Кинопоиск', emoji:'🎬', color:'#f59e0b', url:'kinopoisk.ru/special/…'},
-    {svc:'books', label:'Книги', emoji:'📚', color:'#22d3a3', url:'books.yandex.ru/…'},
+    {svc:'music', label:'Музыка', emoji:'🎵', color:'#60a5fa'},
+    {svc:'kp',    label:'Кинопоиск', emoji:'🎬', color:'#f59e0b'},
+    {svc:'books', label:'Книги', emoji:'📚', color:'#22d3a3'},
+    {svc:'plus',  label:'Плюс', emoji:'➕', color:'#a78bfa'},
   ];
   grid.innerHTML = services.map(function(s) {
     var goals = GOALS_DATA.filter(function(g){ return g.svc === s.svc; });
@@ -1168,62 +1144,43 @@ function renderGoals() {
     var failN = goals.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
     var passPct = total ? Math.round(passN/total*100) : 0;
     var failPct = total ? Math.round(failN/total*100) : 0;
-    var dots = goals.map(function(g) {
+    var ring = 'conic-gradient(var(--green) 0% '+passPct+'%, var(--red) '+passPct+'% '+(passPct+failPct)+'%, var(--bg4) '+(passPct+failPct)+'% 100%)';
+
+    var items = goals.map(function(g) {
       var st = goalStatuses[g.id] || 'idle';
-      return '<div class="goals-dot-item" onclick="cycleGoalDot(\''+g.id+'\',this)">' +
-        '<div class="goals-dot '+st+'" id="dot-'+g.id+'"></div>' +
-        '<span class="goals-dot-label">'+g.event+'</span>' +
+      var icon = st==='pass' ? '✓' : st==='fail' ? '✗' : '·';
+      return '<div class="goal-item" onclick="cycleGoalStatus(\''+g.id+'\')">' +
+        '<div class="goal-item-icon '+st+'" id="dot-'+g.id+'">'+icon+'</div>' +
+        '<span class="goal-item-label">'+g.event+'</span>' +
+        '<span class="goal-item-id">'+g.goal+'</span>' +
       '</div>';
     }).join('');
-    return '<div class="goals-svc-block">' +
-      '<div class="goals-svc-head">' +
-        '<span class="goals-svc-title" style="color:'+s.color+'">'+s.emoji+' '+s.label+
-          ' <span style="color:var(--faint);font-size:10px;font-weight:400">'+s.url+'</span></span>' +
-        '<div class="goals-svc-counts">' +
-          '<span style="color:var(--green)">'+passN+' OK</span>' +
-          '<span style="color:var(--red)">'+failN+' Fail</span>' +
-          '<span style="color:var(--faint)">'+(total-passN-failN)+' —</span>' +
+
+    return '<div class="goal-card">' +
+      '<div class="goal-card-top">' +
+        '<div class="goal-card-icon" style="background:'+s.color+'22;color:'+s.color+'">'+s.emoji+'</div>' +
+        '<div class="goal-card-info">' +
+          '<div class="goal-card-name">'+s.label+'</div>' +
+          '<div class="goal-card-sub">'+passN+'/'+total+' целей подтверждено</div>' +
         '</div>' +
+        '<div class="goal-ring" style="background:'+ring+'"><span class="goal-ring-val">'+passPct+'%</span></div>' +
       '</div>' +
-      '<div class="goals-prog-bar">' +
-        '<div class="goals-prog-pass" style="width:'+passPct+'%"></div>' +
-        '<div class="goals-prog-fail" style="width:'+failPct+'%"></div>' +
-      '</div>' +
-      '<div class="goals-dots">'+dots+'</div>' +
+      '<div class="goal-list">'+items+'</div>' +
     '</div>';
   }).join('');
   updateGoalCounts();
 }
-function cycleGoal(id, btn) {
+function cycleGoalStatus(id) {
   var map = {idle:'pass', pass:'fail', fail:'idle'};
   goalStatuses[id] = map[goalStatuses[id]||'idle'];
-  var st = goalStatuses[id];
-  btn.className = 'goal-btn ' + st;
-  btn.textContent = st==='pass'?'✓ Прошло':st==='fail'?'✗ Упало':'— Не проверено';
-  updateGoalCounts(); updateGoalNav();
-}
-function cycleGoalDot(id, el) {
-  var map = {idle:'pass', pass:'fail', fail:'idle'};
-  goalStatuses[id] = map[goalStatuses[id]||'idle'];
-  var st = goalStatuses[id];
-  var dot = document.getElementById('dot-'+id);
-  if (dot) { dot.className = 'goals-dot ' + st; }
-  updateGoalCounts(); updateGoalNav();
   renderGoals();
-}
-function cycleGoalCard(id, btn) {
-  var map = {idle:'pass', pass:'fail', fail:'idle'};
-  goalStatuses[id] = map[goalStatuses[id]||'idle'];
-  var st = goalStatuses[id];
-  btn.className = 'goal-status-btn ' + st;
-  btn.textContent = st==='pass'?'✓':st==='fail'?'✗':'—';
-  updateGoalCounts(); updateGoalNav();
+  updateGoalNav();
 }
 function updateGoalCounts() {
   var ch = GOALS_DATA.filter(function(g){ return g.has; });
-  document.getElementById('g-pass').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length + ' OK';
-  document.getElementById('g-fail').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length + ' Fail';
-  document.getElementById('g-idle').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='idle'; }).length + ' —';
+  document.getElementById('g-pass').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
+  document.getElementById('g-fail').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
+  document.getElementById('g-idle').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='idle'; }).length;
 }
 function updateGoalNav() {
   var ch = GOALS_DATA.filter(function(g){ return g.has; });
@@ -1241,29 +1198,10 @@ function updateGoalNav() {
     el.style.background = ''; el.style.color = '';
   }
 }
-function filterGoals(s, btn) {
-  goalsFilter = s;
-  document.querySelectorAll('.btn-ghost').forEach(function(b){ if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes('filterGoals')) b.classList.remove('gf-active'); });
-  btn.classList.add('gf-active');
-  renderGoals();
-}
-function markAllGoals(st) {
-  GOALS_DATA.filter(function(g){ return (goalsFilter==='all'||g.svc===goalsFilter)&&g.has; })
-            .forEach(function(g){ goalStatuses[g.id]=st; });
-  renderGoals(); updateGoalNav();
-}
 function resetGoals() {
   GOALS_DATA.forEach(function(g){ goalStatuses[g.id]='idle'; goalNotes[g.id]=''; });
   renderGoals(); updateGoalNav();
 }
-function addYmDebug(u) {
-  // убираем уже существующий _ym_debug если есть
-  u = u.replace(/([?&])_ym_debug=\d*/g, '').replace(/[?&]$/, '');
-  // если в URL уже есть ? — используем &, иначе ?
-  var sep = u.includes('?') ? '&' : '?';
-  return u + sep + '_ym_debug=2';
-}
-function openDbgUrl(u) { window.open(addYmDebug(u), '_blank'); }
 function exportGoals() {
   var rows = ['Сервис,Событие,Цель,Статус,Заметка'].concat(
     GOALS_DATA.map(function(g){ return '"'+g.svcLabel+'","'+g.event+'","'+g.goal+'","'+goalStatuses[g.id]+'","'+(goalNotes[g.id]||'').replace(/"/g,"'")+'"'; })
