@@ -68,15 +68,29 @@ app.post('/run', async (req, res) => {
     broadcast({ type: 'start', config });
 
     await runTest(config, (event) => {
-      // SMS запрос — отправляем в браузер и ждём ответа
-      if (event.type === 'sms_wait' && activeWs) {
-        const resolve = event.resolve;
-        smsResolvers.set(activeWs, resolve);
-        activeWs.send(JSON.stringify({ type: 'sms_required' }));
-        return;
-      }
+      // SMS запрос — отправляем в браузер и ждём ответа.
+      // Ищем живое соединение прямо сейчас, а не полагаемся на activeWs,
+      // запомненный в начале прогона — за долгий прогон оно могло оборваться
+      // (например, на телефоне экран погас и вкладка ушла в фон).
       if (event.type === 'sms_wait') {
-        event.resolve('');
+        let liveWs = (activeWs && activeWs.readyState === WebSocket.OPEN) ? activeWs : null;
+        if (!liveWs) {
+          for (const ws of clients) {
+            if (ws.readyState === WebSocket.OPEN) { liveWs = ws; break; }
+          }
+        }
+        if (liveWs) {
+          try {
+            const resolve = event.resolve;
+            smsResolvers.set(liveWs, resolve);
+            liveWs.send(JSON.stringify({ type: 'sms_required' }));
+          } catch (e) {
+            event.resolve('');
+          }
+        } else {
+          // Нет ни одного живого соединения — некому показать модалку
+          event.resolve('');
+        }
         return;
       }
       broadcast(event);
