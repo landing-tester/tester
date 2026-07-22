@@ -188,7 +188,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .goals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .goal-card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
 .goal-card-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.goal-card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.goal-card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.goal-card-icon svg{width:18px;height:18px}
+.goal-card-icon img{width:20px;height:20px;object-fit:contain}
+.goal-card-icon-fallback{display:none;align-items:center;justify-content:center;width:100%;height:100%}
 .goal-card-info{flex:1;min-width:0}
 .goal-card-name{font-size:13px;font-weight:600;font-family:var(--font-head)}
 .goal-card-sub{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
@@ -663,13 +666,12 @@ var PAGE_NAMES = {
   goals:'цели метрики', checklist:'чек-лист', config:'конфигурация',
   log:'лог запуска'
 };
-function flashNavLabel(el) {
+function closeNavLabel(el) {
   var label = el.querySelector('.ni-label');
   if (!label) return;
-  label.style.transition = 'opacity .25s';
-  label.style.opacity = '1';
   clearTimeout(el._labelTimer);
-  el._labelTimer = setTimeout(function(){ label.style.opacity = '0'; }, 2000);
+  label.style.transition = 'none';
+  label.style.opacity = '0';
 }
 function nav(id, el) {
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
@@ -678,7 +680,7 @@ function nav(id, el) {
   document.getElementById('page-' + id).classList.add('active');
   var bc = document.getElementById('breadcrumb-page');
   if (bc) bc.textContent = PAGE_NAMES[id] || id;
-  flashNavLabel(el);
+  closeNavLabel(el);
 }
 function navTo(id) {
   var items = document.querySelectorAll('.nav-item');
@@ -1167,11 +1169,17 @@ function initGoals() {
 function renderGoals() {
   var grid = document.getElementById('goals-cards-grid');
   if (!grid) return;
+  var SERVICE_ICONS = {
+    music: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>',
+    kp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v12H4z"/><path d="M4 8l2-4h3l-2 4M10 8l2-4h3l-2 4M16 8l2-4h2v4"/></svg>',
+    books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c2-1 5-1 8 1v13c-3-2-6-2-8-1V5z"/><path d="M20 5c-2-1-5-1-8 1v13c3-2 6-2 8-1V5z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="M12 8v8M8 12h8"/></svg>',
+  };
   var services = [
-    {svc:'music', label:'Музыка', emoji:'🎵', color:'#60a5fa'},
-    {svc:'kp',    label:'Кинопоиск', emoji:'🎬', color:'#f59e0b'},
-    {svc:'books', label:'Книги', emoji:'📚', color:'#22d3a3'},
-    {svc:'plus',  label:'Плюс', emoji:'➕', color:'#a78bfa'},
+    {svc:'music', label:'Музыка', color:'#60a5fa'},
+    {svc:'kp',    label:'Кинопоиск', color:'#f59e0b'},
+    {svc:'books', label:'Книги', color:'#22d3a3'},
+    {svc:'plus',  label:'Плюс', color:'#a78bfa'},
   ];
   grid.innerHTML = services.map(function(s) {
     var goals = GOALS_DATA.filter(function(g){ return g.svc === s.svc; });
@@ -1194,7 +1202,10 @@ function renderGoals() {
 
     return '<div class="goal-card">' +
       '<div class="goal-card-top">' +
-        '<div class="goal-card-icon" style="background:'+s.color+'22;color:'+s.color+'">'+s.emoji+'</div>' +
+        '<div class="goal-card-icon" style="background:'+s.color+'22;color:'+s.color+'">' +
+          '<img src="/icons/'+s.svc+'.svg" alt="'+s.label+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+          '<span class="goal-card-icon-fallback">'+SERVICE_ICONS[s.svc]+'</span>' +
+        '</div>' +
         '<div class="goal-card-info">' +
           '<div class="goal-card-name">'+s.label+'</div>' +
           '<div class="goal-card-sub">'+passN+'/'+total+' целей подтверждено</div>' +
@@ -1448,7 +1459,7 @@ document.querySelectorAll('.nav-item').forEach(function(item) {
   item.addEventListener('mouseenter', function() {
     clearTimeout(item._labelTimer);
     var label = item.querySelector('.ni-label');
-    if (label) label.style.opacity = '';
+    if (label) { label.style.opacity = ''; label.style.transition = ''; }
   });
 });
 
