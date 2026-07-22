@@ -128,19 +128,24 @@ async function doYandexAuth(page, config, profile, results, emit) {
 
     const nextBtn = await page.$('button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
     if (nextBtn) { await nextBtn.click(); } else { await page.keyboard.press('Enter'); }
-    await sleep(2000);
 
-    // пароль
-    const passField = await findInput(page, [
-      'input[type="password"]', 'input[name="passwd"]',
-      'input#passp-field-passwd', 'input[autocomplete="current-password"]',
-    ]);
+    // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
+    let passField = null;
+    for (let pi = 0; pi < 10; pi++) {
+      passField = await findInput(page, [
+        'input[type="password"]', 'input[name="passwd"]',
+        'input#passp-field-passwd', 'input[autocomplete="current-password"]',
+      ]);
+      if (passField) break;
+      await sleep(800);
+    }
 
     if (passField) {
       await passField.click(); await sleep(200);
       await passField.fill(config.account.password);
       log('Пароль введён', 'ok');
     } else {
+      log('Поле пароля не найдено за 8с — вводим по координатам', 'warn');
       try {
         const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
         if (bodyAuth) {
@@ -158,6 +163,14 @@ async function doYandexAuth(page, config, profile, results, emit) {
 
     await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
     await sleep(1500);
+
+    if (page.url().includes('passport.yandex')) {
+      // даём ещё один шанс — иногда паспорт ненадолго возвращает на промежуточный
+      // экран (например, повторный ввод пароля) перед финальным редиректом
+      log('Ещё на passport, ждём повторно...', 'info');
+      await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 8000 }).catch(() => {});
+      await sleep(1000);
+    }
 
     if (!page.url().includes('passport.yandex')) {
       log('Авторизация успешна', 'ok');
@@ -490,7 +503,7 @@ async function runTest(config, emit) {
         const expYear  = (expParts[1] || '').trim();
 
         // Ждём появления поля номера карты
-        await trustFrame.waitForSelector('input#regular-card-number-input', { timeout: 10000 })
+        await trustFrame.waitForSelector('input#regular-card-number-input', { timeout: 22000 })
           .catch(() => { log('Поле карты не появилось', 'warn'); });
         await sleep(300);
 
