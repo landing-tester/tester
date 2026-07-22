@@ -192,6 +192,12 @@ async function runTest(config, emit) {
   const profile = findProfile(config.landingUrl);
   if (profile) log('Профиль: ' + profile.name, 'info');
 
+  // Определяем сервис заранее — нужно для live-обновления целей Метрики по ходу теста
+  const svc = config.landingUrl.includes('music.yandex') ? 'music'
+    : config.landingUrl.includes('kinopoisk') ? 'kp'
+    : config.landingUrl.includes('books.yandex') ? 'books'
+    : null;
+
   // Запуск браузера
   const isMobile = config.device === 'iphone' || config.device === 'pixel';
   log('Устройство: ' + (config.device || 'chromium'), 'info');
@@ -245,6 +251,7 @@ async function runTest(config, emit) {
       if (/reachGoal|Goal|ym\./i.test(text)) {
         ymGoals.push(text);
         log('Метрика: ' + text.slice(0, 100), 'ok');
+        if (svc) emit({ type:'goals', svc, firedGoals: [text] });
       }
     });
   } catch (_) {}
@@ -254,6 +261,7 @@ async function runTest(config, emit) {
     if (/reachGoal|Goal|ym\.|Metrika/i.test(text)) {
       ymGoals.push(text);
       log('Метрика: ' + text.slice(0, 100), 'ok');
+      if (svc) emit({ type:'goals', svc, firedGoals: [text] });
     }
   });
 
@@ -716,8 +724,7 @@ async function runTest(config, emit) {
     log('Итого целей Метрики: ' + ymGoals.length, ymGoals.length > 0 ? 'ok' : 'warn');
     if (ymGoals.length > 0) {
       result('Яндекс Метрика', 'pass', ymGoals.length + ' событий');
-      const url = config.landingUrl;
-      const svc = url.includes('music.yandex') ? 'music' : url.includes('kinopoisk') ? 'kp' : url.includes('books.yandex') ? 'books' : null;
+      // финальная сверка полным списком — подстраховка на случай гонки событий
       if (svc) emit({ type:'goals', svc, firedGoals: ymGoals });
     } else {
       result('Яндекс Метрика', 'warn', '0 событий');
