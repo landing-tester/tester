@@ -247,17 +247,29 @@ async function runTest(config, emit) {
   // (например, у Яндекс.Паспорта в служебных URL встречается goal=https://..., это не про Метрику)
   const METRIKA_GOAL_RE = /Reach goal\.|Goal id\s*[:=]|ym\(\s*\d+\s*,\s*['"]reachGoal['"]/i;
 
-  // Перехват событий Метрики через консоль страницы
-  // (не добавляем отдельно ещё и CDP Runtime.consoleAPICalled — под капотом это те же
-  // события, и с обоими слушателями сразу каждая цель логировалась и отправлялась дважды)
-  page.on('console', msg => {
-    const text = msg.text();
-    if (METRIKA_GOAL_RE.test(text)) {
-      ymGoals.push(text);
-      log('Метрика: ' + text.slice(0, 100), 'ok');
-      if (svc) emit({ type:'goals', svc, firedGoals: [text] });
-    }
-  });
+  // Перехват событий Метрики. Используем оба источника (CDP и обычный page.on('console')),
+  // т.к. на практике только page.on('console') не всегда ловит события Метрики надёжно —
+  // а с обоими сразу события задваивались. Решаем через дедупликацию по тексту события.
+  const seenGoalTexts = new Set();
+  function handleConsoleText(text) {
+    if (!METRIKA_GOAL_RE.test(text)) return;
+    if (seenGoalTexts.has(text)) return; // такое событие уже обработано вторым слушателем
+    seenGoalTexts.add(text);
+    ymGoals.push(text);
+    log('Метрика: ' + text.slice(0, 100), 'ok');
+    if (svc) emit({ type:'goals', svc, firedGoals: [text] });
+  }
+
+  page.on('console', msg => handleConsoleText(msg.text()));
+
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Runtime.enable');
+    cdp.on('Runtime.consoleAPICalled', event => {
+      const text = (event.args||[]).map(a => a.value || a.description || '').join(' ');
+      handleConsoleText(text);
+    });
+  } catch (_) {}
 
   try {
     // ── БЛОК 1: Открытие лендинга ──────────────────────────────────────────
