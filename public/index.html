@@ -261,6 +261,30 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .snap-note{flex:1;background:transparent;border:none;outline:none;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
 .snap-note:focus{color:var(--text)}
 
+/* MOBILE */
+@media (max-width: 680px){
+  .page{padding:16px;gap:16px}
+  .stats-row{grid-template-columns:repeat(2,1fr);gap:8px}
+  .config-grid{grid-template-columns:1fr}
+  .card-payment-row{grid-template-columns:1fr !important;gap:10px !important}
+  .breadcrumb-page,.breadcrumb-sep{display:none}
+  .url-display{font-size:11px}
+  .topbar-actions{padding:0 10px}
+  .btn-primary#btn-run{padding:0 10px;font-size:11px}
+  .card-head{padding:12px 14px;flex-wrap:wrap;gap:8px}
+  .card-body{padding:14px}
+  .cl-item{flex-wrap:wrap;row-gap:8px}
+  .cl-btns{width:100%;justify-content:space-between}
+  .cl-note{flex:1;width:auto}
+  .qa-grid{grid-template-columns:1fr}
+  .result-table th,.result-table td{padding:7px 10px;font-size:11px}
+  .result-card-head{padding:10px 12px}
+  .goal-card{padding:14px}
+  .goals-grid{grid-template-columns:1fr}
+  .modal{width:88vw;max-width:340px;padding:22px}
+  .results-toolbar{flex-direction:column;align-items:stretch}
+}
+
 </style>
 </head>
 <body>
@@ -455,7 +479,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
   <div class="card">
     <div class="card-head"><h3>Тестовая карта</h3><span class="chip">Stripe / PayPal</span></div>
     <div class="card-body">
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="card-payment-row" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="cfg-field"><label>Номер карты</label><input type="text" id="cfg-card-num" placeholder="4242 4242 4242 4242" maxlength="19" oninput="fmtCard(this)" autocomplete="off"/></div>
         <div class="cfg-field"><label>MM / YY</label><input type="text" id="cfg-card-exp" placeholder="12 / 27" maxlength="7" oninput="fmtExp(this)" autocomplete="off"/></div>
         <div class="cfg-field"><label>CVC</label><input type="text" id="cfg-card-cvc" placeholder="123" maxlength="4" oninput="this.value=this.value.replace(/\D/g,'')" autocomplete="off"/></div>
