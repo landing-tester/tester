@@ -85,11 +85,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 /* PROGRESS */
 .main-progress{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
 .main-prog-bar{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
-.main-prog-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s ease}
-.main-prog-fill.running{animation:shimmer 1.4s ease-in-out infinite}
+.main-prog-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s ease;position:relative;overflow:hidden}
+.main-prog-fill.running::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,.1) 25%, rgba(255,255,255,.4) 50%, rgba(255,255,255,.1) 75%, transparent 100%);background-size:200% 100%;animation:gradientflow 2.8s ease-in-out infinite}
 .main-prog-fill.done-ok{background:var(--green)}
 .main-prog-fill.done-fail{background:var(--red)}
-@keyframes shimmer{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes gradientflow{0%{background-position:0% 0}100%{background-position:200% 0}}
 .main-prog-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
 .prog-suite-row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3);border-radius:var(--r2);font-size:12px;border:1px solid transparent;transition:background .2s}
 .prog-suite-row.running{background:rgba(124,106,255,.08);border-color:rgba(124,106,255,.2)}
@@ -98,9 +98,9 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .prog-bar-wrap{height:2px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-bottom:4px}
 .prog-bar-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s ease}
 .scanner-wrap{position:relative;overflow:hidden}
-.scanner-line{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:0;pointer-events:none}
-.scanner-line.active{opacity:.7;animation:scanmove 1.8s ease-in-out infinite}
-@keyframes scanmove{0%{left:0}50%{left:calc(100% - 1px)}100%{left:0}}
+.scanner-line{position:absolute;top:0;bottom:0;width:16%;background:linear-gradient(90deg,transparent,var(--accent));opacity:0;pointer-events:none}
+.scanner-line.active{opacity:.8;animation:cometmove 1.6s linear infinite}
+@keyframes cometmove{0%{left:-16%}100%{left:100%}}
 
 /* BADGES */
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:3px;font-family:'Fira Code',monospace;letter-spacing:.02em;white-space:nowrap}
@@ -186,7 +186,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
 /* GOALS */
 .goals-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.goal-card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.goal-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid transparent;border-radius:12px;padding:16px 18px;transition:border-color .2s}
 .goal-card-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .goal-card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
 .goal-card-icon svg{width:18px;height:18px}
@@ -1200,7 +1200,8 @@ function renderGoals() {
       '</div>';
     }).join('');
 
-    return '<div class="goal-card">' +
+    var cardStyle = failN > 0 ? ' style="border-left-color:var(--red)"' : '';
+    return '<div class="goal-card"'+cardStyle+'>' +
       '<div class="goal-card-top">' +
         '<div class="goal-card-icon" style="background:'+s.color+'22;color:'+s.color+'">' +
           '<img src="/icons/'+s.svc+'.svg" alt="'+s.label+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
@@ -1223,14 +1224,24 @@ function cycleGoalStatus(id) {
   renderGoals();
   updateGoalNav();
 }
+function currentGoalSvc() {
+  var url = getLandingUrl();
+  if (url.includes('music.yandex')) return 'music';
+  if (url.includes('kinopoisk')) return 'kp';
+  if (url.includes('books.yandex')) return 'books';
+  if (url.includes('plus.yandex')) return 'plus';
+  return null; // URL ещё не задан/не распознан — сервис не определён
+}
 function updateGoalCounts() {
-  var ch = GOALS_DATA.filter(function(g){ return g.has; });
+  var svc = currentGoalSvc();
+  var ch = GOALS_DATA.filter(function(g){ return g.has && (!svc || g.svc === svc); });
   document.getElementById('g-pass').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
   document.getElementById('g-fail').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
   document.getElementById('g-idle').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='idle'; }).length;
 }
 function updateGoalNav() {
-  var ch = GOALS_DATA.filter(function(g){ return g.has; });
+  var svc = currentGoalSvc();
+  var ch = GOALS_DATA.filter(function(g){ return g.has && (!svc || g.svc === svc); });
   var pass = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
   var fail = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
   var el = document.getElementById('nc-goals');
@@ -1367,6 +1378,8 @@ function clearCard() {
 
 function applyConfig() {
   document.getElementById('url-display').textContent = getLandingUrl();
+  updateGoalCounts();
+  updateGoalNav();
   var btn = document.getElementById('btn-run');
   btn.textContent = '✓ Сохранено';
   setTimeout(function(){ btn.textContent = '▶ Запустить'; }, 1500);
