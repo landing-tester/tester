@@ -973,31 +973,42 @@ function runTests() {
     } : null,
   };
 
-  // Подключаем WebSocket
+  // Подключаем WebSocket. Обёрнуто в функцию, чтобы уметь переподключаться,
+  // если соединение оборвалось на телефоне (экран погас/вкладка ушла в фон),
+  // а сам прогон на сервере ещё продолжается.
   var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var ws = new WebSocket(wsProtocol + '//' + location.host);
   var startTime = Date.now();
   var stepCount = 0;
+  var ws;
+  var reconnectAttempts = 0;
 
-  ws.onopen = function() {
-    log('Подключено к серверу', 'info');
-    fetch('/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    }).then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.error) {
-          log('Ошибка: ' + data.error, 'err');
+  function connectWs(isReconnect) {
+    ws = new WebSocket(wsProtocol + '//' + location.host);
+
+    ws.onopen = function() {
+      reconnectAttempts = 0;
+      if (isReconnect) {
+        log('Соединение восстановлено', 'ok');
+        return;
+      }
+      log('Подключено к серверу', 'info');
+      fetch('/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      }).then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.error) {
+            log('Ошибка: ' + data.error, 'err');
+            finishRun();
+          }
+        }).catch(function(err) {
+          log('Ошибка соединения: ' + err.message, 'err');
           finishRun();
-        }
-      }).catch(function(err) {
-        log('Ошибка соединения: ' + err.message, 'err');
-        finishRun();
-      });
-  };
+        });
+    };
 
-  ws.onmessage = function(evt) {
+    ws.onmessage = function(evt) {
     var data = JSON.parse(evt.data);
 
     if (data.type === 'log') {
@@ -1107,14 +1118,25 @@ function runTests() {
     }
   };
 
-  ws.onerror = function() {
-    log('Ошибка WebSocket соединения', 'err');
-    finishRun();
-  };
+    ws.onerror = function() {
+      log('Ошибка WebSocket соединения', 'warn');
+      // не завершаем прогон сразу — дадим onclose решить, переподключаться или нет
+    };
 
-  ws.onclose = function() {
-    if (running) finishRun();
-  };
+    ws.onclose = function() {
+      if (!running) return;
+      reconnectAttempts++;
+      if (reconnectAttempts > 15) {
+        log('Не удалось восстановить соединение — завершаем', 'err');
+        finishRun();
+        return;
+      }
+      log('Соединение прервано, переподключаюсь... (' + reconnectAttempts + ')', 'warn');
+      setTimeout(function(){ if (running) connectWs(true); }, 2000);
+    };
+  }
+
+  connectWs(false);
 
   function finishRun() {
     var fail = results.filter(function(r){ return r.status === 'fail'; }).length;
@@ -1124,7 +1146,7 @@ function runTests() {
     document.getElementById('run-status').classList.remove('active');
     document.getElementById('btn-run').disabled = false;
     running = false;
-    ws.close();
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) ws.close();
   }
 }
 
