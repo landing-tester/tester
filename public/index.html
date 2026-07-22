@@ -783,9 +783,30 @@ function renderLogArea() {
 function copyLog(btn) {
   if (!logs.length) { alert('Лог пуст'); return; }
   var text = logs.map(function(l){ return l.ts + '  ' + l.msg; }).join('\n');
-  navigator.clipboard.writeText(text).then(function(){
+
+  function flashOk() {
     if (btn) { var old = btn.textContent; btn.textContent = '✓ Скопировано'; setTimeout(function(){ btn.textContent = old; }, 1200); }
-  }).catch(function(){ prompt('Скопируйте вручную:', text); });
+  }
+
+  function fallbackCopy() {
+    // Работает и по http, где navigator.clipboard недоступен (требует https)
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+    if (ok) flashOk(); else prompt('Скопируйте вручную:', text);
+  }
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(flashOk).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 }
 
 function clearLog() {
@@ -1475,7 +1496,11 @@ function exportResults() {
 }
 function copyConfig() {
   var c = "const{defineConfig,devices}=require('@playwright/test');\nmodule.exports=defineConfig({\n  testDir:'./tests',timeout:30000,retries:1,workers:4,\n  reporter:[['html',{outputFolder:'report'}]],\n  use:{headless:true,video:'retain-on-failure'},\n  projects:[\n    {name:'chromium',use:{...devices['Desktop Chrome']}},\n    {name:'yandex',use:{...devices['Desktop Chrome'],executablePath:'C:/Users/user/AppData/Local/Yandex/YandexBrowser/Application/browser.exe'}},\n    {name:'iphone',use:{...devices['iPhone 13']}},\n    {name:'pixel',use:{...devices['Pixel 5']}},\n  ],\n});";
-  navigator.clipboard.writeText(c).then(function(){ alert('Конфиг скопирован!'); }).catch(function(){ prompt('Скопируйте:',c); });
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(c).then(function(){ alert('Конфиг скопирован!'); }).catch(function(){ prompt('Скопируйте:',c); });
+  } else {
+    prompt('Скопируйте:', c);
+  }
 }
 
 function addSchedule() {
