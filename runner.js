@@ -196,6 +196,7 @@ async function runTest(config, emit) {
   const svc = config.landingUrl.includes('music.yandex') ? 'music'
     : config.landingUrl.includes('kinopoisk') ? 'kp'
     : config.landingUrl.includes('books.yandex') ? 'books'
+    : config.landingUrl.includes('plus.yandex') ? 'plus'
     : null;
 
   // Запуск браузера
