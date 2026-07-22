@@ -120,6 +120,30 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .tr-dur{font-size:11px;color:var(--muted);min-width:44px;text-align:right}
 .suite-label{font-size:10px;font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;font-family:var(--font-mono);position:sticky;top:0;background:var(--bg2);z-index:10;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);margin-bottom:4px}
 
+.results-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.results-filters{display:flex;gap:6px;flex-wrap:wrap}
+.rf-btn{font-family:var(--font-mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.rf-btn:hover{background:var(--bg3);color:var(--text)}
+.rf-btn.rf-active{background:var(--accent);border-color:var(--accent);color:#fff}
+.results-cards{display:flex;flex-direction:column;gap:12px}
+.result-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--faint);border-radius:var(--r);overflow:hidden}
+.result-card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:6px}
+.rc-title{font-size:12px;font-weight:600;font-family:var(--font-head)}
+.rc-counts{display:flex;gap:10px;font-size:10px;font-family:var(--font-mono)}
+.result-table{width:100%;border-collapse:collapse}
+.result-table th{text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 16px;cursor:pointer;user-select:none;border-bottom:1px solid var(--line);white-space:nowrap;transition:color .15s}
+.result-table th:hover{color:var(--text)}
+.result-table td{padding:9px 16px;font-size:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.result-table tr:last-child td{border-bottom:none}
+.result-table tbody tr:hover td{background:var(--bg3)}
+.result-table tbody tr.rt-fail{background:rgba(255,87,87,.06)}
+.result-table tbody tr.rt-fail:hover td{background:rgba(255,87,87,.12)}
+.result-table tbody tr.rt-warn{background:rgba(245,158,11,.06)}
+.result-table tbody tr.rt-warn:hover td{background:rgba(245,158,11,.12)}
+.result-table tbody tr.rt-pass:hover td{background:var(--bg3)}
+.results-empty{padding:44px 0;text-align:center}
+.results-empty-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+
 /* CONFIG */
 .config-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .cfg-field{display:flex;flex-direction:column;gap:6px}
@@ -335,14 +359,17 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
 <!-- RESULTS -->
 <div class="page" id="page-results">
-  <div class="card">
-    <div class="card-head"><h3>Результаты тестов</h3>
-      <div style="display:flex;gap:8px">
-        <span class="chip" id="res-summary">—</span>
-        <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportResults()">⬇ CSV</button>
-      </div>
+  <div class="results-toolbar" style="justify-content:flex-end">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="chip" id="res-summary">—</span>
+      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportResults()">⬇ CSV</button>
     </div>
-    <div class="card-body" id="results-list"><div class="empty-state"><div class="es-icon">≡</div>Запустите тесты</div></div>
+  </div>
+  <div class="results-cards" id="results-list">
+    <div class="results-empty">
+      <div class="results-empty-sub">Нет результатов — тесты ещё не запускались</div>
+      <button class="btn btn-ghost" onclick="runTests()">▶ Запустить</button>
+    </div>
   </div>
 </div>
 
@@ -687,7 +714,7 @@ function resetAll() {
   document.getElementById('prog-text').textContent = '0 шагов';
   document.getElementById('prog-pct').textContent = '0%';
   document.getElementById('prog-chip').textContent = 'Не запущено';
-  document.getElementById('results-list').innerHTML = '<div class="empty-state"><div class="es-icon">≡</div>Запустите тесты</div>';
+  document.getElementById('results-list').innerHTML = '<div class="results-empty"><div class="results-empty-sub">Нет результатов — тесты ещё не запускались</div><button class="btn btn-ghost" onclick="runTests()">▶ Запустить</button></div>';
   clearLog();
 }
 
@@ -800,6 +827,12 @@ function runTests() {
 
   running = true;
   results = []; failCount = 0; logs = [];
+  ['cl4','cl5','cl6','cl7','cl8'].forEach(function(id){ clStatuses[id] = 'idle'; });
+  renderChecklist();
+  updateClNav();
+  GOALS_DATA.forEach(function(g){ goalStatuses[g.id] = 'idle'; });
+  renderGoals();
+  updateGoalNav();
   document.getElementById('log-area').innerHTML = '';
   document.getElementById('nc-log').textContent = '0';
   document.getElementById('btn-run').disabled = true;
@@ -869,6 +902,11 @@ function runTests() {
       document.getElementById('prog-text').textContent = stepCount + ' шагов';
       document.getElementById('prog-pct').textContent = pct + '%';
       results.push({ name: data.name, status: data.status, note: data.note, suite: 'Тест', browser: 'Chromium', dur: 0 });
+
+      // Живое обновление чек-листа по мере поступления шагов
+      applyChecklistFromResult({ name: data.name, status: data.status, note: data.note });
+      renderChecklist();
+      updateClNav();
     }
 
     if (data.type === 'results') {
@@ -899,31 +937,16 @@ function runTests() {
 
       renderResults();
 
-      // Автопроставление чек-листа по результатам
-      data.results.forEach(function(r) {
-        if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
-          clStatuses['cl4'] = r.status === 'pass' ? 'pass' : 'fail';
-        if (r.name === 'Яндекс Метрика')
-          clStatuses['cl6'] = r.status === 'pass' ? 'pass' : 'fail';
-        if (r.name === 'Персональные посадки')
-          clStatuses['cl8'] = r.status === 'pass' ? 'pass' : 'fail';
-        if (r.name === 'SMS-подтверждение' && r.status === 'pass')
-          clStatuses['cl5'] = 'fail'; // был SMS — одноклик не включён
-        if ((r.name === 'Оплата' && r.note === 'Одноклик') || r.name === 'Подписка оформлена')
-          clStatuses['cl5'] = 'pass';
-        if (r.name === 'Опция принята' && r.status === 'pass')
-          clStatuses['cl7'] = 'pass';
-      });
+      // Финальный проход — на случай если какие-то шаги пришли не по одному, а сразу пачкой
+      data.results.forEach(applyChecklistFromResult);
       renderChecklist();
       updateClNav();
     }
 
     if (data.type === 'goals') {
-      // Автоматически проставляем статусы целей по сервису
+      // Автоматически проставляем статусы целей по сервису — накопительно,
+      // т.к. сервер теперь шлёт событие сразу при срабатывании каждой цели
       if (data.svc) {
-        var goalMap = {};
-        // firedGoals уже содержит извлечённые Goal id
-        // Нормализуем: убираем пробелы и приводим к нижнему регистру
         var firedIds = data.firedGoals.map(function(fg) {
           // Пробуем извлечь Goal id из строки "Reach goal. Counter: 123. Goal id: auth-success"
           var m = fg.match(/Goal id[:\s]+([^\s,\.]+)/i);
@@ -937,12 +960,11 @@ function runTests() {
             var fired = firedIds.some(function(id) {
               return id === goalLower;
             });
-            goalStatuses[g.id] = fired ? 'pass' : 'idle';
+            if (fired) goalStatuses[g.id] = 'pass';
           }
         });
         renderGoals();
         updateGoalNav();
-        log('Цели обновлены для сервиса: ' + data.svc, 'info');
       }
     }
 
@@ -992,30 +1014,114 @@ function runTests() {
 }
 
 
+var resultsFilter = 'all';
+var resultsSort = { key: null, dir: 'asc' };
+
+var RESULT_CATEGORIES = [
+  { cat: 'Открытие и проверки', re: /Открытие лендинга|Поп-ап|H1|Битые картинки|Персональные посадки|Meta title/i },
+  { cat: 'Авторизация',         re: /Авторизация/i },
+  { cat: 'Виджет и оплата',     re: /Виджет|SMS|Оплата|Опция|Подписка/i },
+  { cat: 'Метрика',             re: /Метрика/i },
+];
+var RESULT_CAT_ORDER = ['Открытие и проверки','Авторизация','Виджет и оплата','Метрика','Прочее'];
+
+function categorizeResult(name) {
+  for (var i = 0; i < RESULT_CATEGORIES.length; i++) {
+    if (RESULT_CATEGORIES[i].re.test(name)) return RESULT_CATEGORIES[i].cat;
+  }
+  return 'Прочее';
+}
+function statusRank(s) { return s==='fail' ? 0 : s==='warn' ? 1 : s==='pass' ? 2 : 3; }
+
+function setResultsFilter(f, btn) {
+  resultsFilter = f;
+  document.querySelectorAll('.rf-btn').forEach(function(b){ b.classList.remove('rf-active'); });
+  if (btn) btn.classList.add('rf-active');
+  renderResults();
+}
+
+function sortResultsBy(key) {
+  if (resultsSort.key === key) { resultsSort.dir = resultsSort.dir === 'asc' ? 'desc' : 'asc'; }
+  else { resultsSort.key = key; resultsSort.dir = 'asc'; }
+  renderResults();
+}
+
 function renderResults() {
   var list = document.getElementById('results-list');
   if (!results.length) return;
+
   var skipNames = {'Meta title': true};
+  var filtered = results.filter(function(r){ return !skipNames[r.name]; });
+  if (resultsFilter !== 'all') filtered = filtered.filter(function(r){ return r.status === resultsFilter; });
+
   var grouped = {};
-  results.filter(function(r){ return !skipNames[r.name]; })
-    .forEach(function(r){ if(!grouped[r.suite]) grouped[r.suite]=[]; grouped[r.suite].push(r); });
-  list.innerHTML = Object.keys(grouped).map(function(suite) {
-    var tests = grouped[suite];
-    var passed = tests.filter(function(t){ return t.status==='pass'; }).length;
+  filtered.forEach(function(r) {
+    var cat = categorizeResult(r.name);
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(r);
+  });
+
+  var cats = RESULT_CAT_ORDER.filter(function(c){ return grouped[c] && grouped[c].length; });
+
+  if (!cats.length) {
+    list.innerHTML = '<div class="results-empty"><div class="results-empty-sub">Нет результатов по фильтру</div></div>';
+    return;
+  }
+
+  function arrow(key) {
+    if (resultsSort.key !== key) return '';
+    return resultsSort.dir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  list.innerHTML = cats.map(function(cat) {
+    var tests = grouped[cat].slice();
+    if (resultsSort.key) {
+      tests.sort(function(a, b) {
+        var av, bv;
+        if (resultsSort.key === 'status') { av = statusRank(a.status); bv = statusRank(b.status); }
+        else { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
+        if (av < bv) return resultsSort.dir === 'asc' ? -1 : 1;
+        if (av > bv) return resultsSort.dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
     var total = tests.length;
-    var hasFail = tests.some(function(t){ return t.status==='fail'; });
-    var headerColor = hasFail ? 'var(--red)' : passed===total ? 'var(--green)' : 'var(--amber)';
-    return '<div class="suite-label">'+suite+
-      '<span style="color:'+headerColor+';font-size:10px;font-weight:600">'+passed+'/'+total+'</span></div>' +
-      tests.map(function(t) {
-        var icon = t.status==='pass' ? '✓' : t.status==='fail' ? '✗' : '⚠';
-        var iconColor = t.status==='pass' ? 'var(--green)' : t.status==='fail' ? 'var(--red)' : 'var(--amber)';
-        var note = t.note ? ' <span style="color:var(--faint);font-size:11px">· '+t.note+'</span>' : '';
-        return '<div class="test-row">' +
-          '<span style="font-size:14px;color:'+iconColor+';width:18px;flex-shrink:0;text-align:center">'+icon+'</span>' +
-          '<span class="tr-name">'+t.name+note+'</span>' +
-          '</div>';
-      }).join('');
+    var passed = tests.filter(function(t){ return t.status === 'pass'; }).length;
+    var failed = tests.filter(function(t){ return t.status === 'fail'; }).length;
+    var warned = tests.filter(function(t){ return t.status === 'warn'; }).length;
+    var accent = failed > 0 ? 'var(--red)' : warned > 0 ? 'var(--amber)' : 'var(--green)';
+
+    var rows = tests.map(function(t) {
+      var bc = t.status==='pass'?'badge-pass':t.status==='fail'?'badge-fail':t.status==='warn'?'badge-warn':'badge-skip';
+      var bl = t.status==='pass'?'OK':t.status==='fail'?'Fail':t.status==='warn'?'Warn':'Skip';
+      var rowCls = t.status==='fail' ? 'rt-fail' : t.status==='warn' ? 'rt-warn' : 'rt-pass';
+      return '<tr class="'+rowCls+'">' +
+        '<td style="width:70px"><span class="badge '+bc+'">'+bl+'</span></td>' +
+        '<td class="tr-name">'+t.name+'</td>' +
+        '<td style="color:var(--muted)">'+(t.note || '—')+'</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<div class="result-card" style="border-left-color:'+accent+'">' +
+      '<div class="result-card-head">' +
+        '<span class="rc-title">'+cat+'</span>' +
+        '<div class="rc-counts">' +
+          '<span style="color:var(--green)">'+passed+' OK</span>' +
+          (failed ? '<span style="color:var(--red)">'+failed+' Fail</span>' : '') +
+          (warned ? '<span style="color:var(--amber)">'+warned+' Warn</span>' : '') +
+          '<span style="color:var(--faint)">'+total+' всего</span>' +
+        '</div>' +
+      '</div>' +
+      '<table class="result-table">' +
+        '<thead><tr>' +
+          '<th style="width:70px" onclick="sortResultsBy(\'status\')">Статус'+arrow('status')+'</th>' +
+          '<th onclick="sortResultsBy(\'name\')">Тест'+arrow('name')+'</th>' +
+          '<th>Примечание</th>' +
+        '</tr></thead>' +
+        '<tbody>'+rows+'</tbody>' +
+      '</table>' +
+    '</div>';
   }).join('');
 }
 
@@ -1165,6 +1271,21 @@ function exportGoals() {
   var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows); a.download='goals.csv'; a.click();
 }
 
+
+function applyChecklistFromResult(r) {
+  if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
+    clStatuses['cl4'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'Яндекс Метрика')
+    clStatuses['cl6'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'Персональные посадки')
+    clStatuses['cl8'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'SMS-подтверждение' && r.status === 'pass')
+    clStatuses['cl5'] = 'fail'; // был SMS — одноклик не включён
+  if ((r.name === 'Оплата' && r.note === 'Одноклик') || r.name === 'Подписка оформлена')
+    clStatuses['cl5'] = 'pass';
+  if (r.name === 'Опция принята' && r.status === 'pass')
+    clStatuses['cl7'] = 'pass';
+}
 
 function initChecklist() {
   CHECKLIST.forEach(function(c){ clStatuses[c.id]='idle'; clNotes[c.id]=''; });
