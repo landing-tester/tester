@@ -502,33 +502,49 @@ async function runTest(config, emit) {
         const expMonth = (expParts[0] || '').trim();
         const expYear  = (expParts[1] || '').trim();
 
-        // Ждём появления поля номера карты
-        await trustFrame.waitForSelector('input#regular-card-number-input', { timeout: 22000 })
-          .catch(() => { log('Поле карты не появилось', 'warn'); });
-        await sleep(300);
+        // Форма карты не всегда лежит именно в trustFrame — иногда она рендерится
+        // во вложенном дочернем фрейме с другим доменом (например, у payment-widget.plus.yandex.ru).
+        // Поэтому ищем поле номера карты по ВСЕМ фреймам страницы, а не только в trustFrame.
+        let cardFrame = null;
+        for (let ci = 0; ci < 22; ci++) {
+          for (const f of page.frames()) {
+            const el = await f.$('input#regular-card-number-input').catch(() => null);
+            if (el) { cardFrame = f; break; }
+          }
+          if (cardFrame) break;
+          await sleep(1000);
+        }
 
-        const numEl = await trustFrame.$('input#regular-card-number-input');
+        if (cardFrame && cardFrame !== trustFrame) {
+          log('Поле карты найдено во вложенном фрейме: ' + cardFrame.url().slice(0,60), 'ok');
+        }
+        if (!cardFrame) {
+          log('Поле карты не появилось ни в одном фрейме', 'warn');
+          cardFrame = trustFrame; // на всякий случай пробуем как раньше
+        }
+
+        const numEl = await cardFrame.$('input#regular-card-number-input');
         if (numEl) {
           await numEl.click({ force: true }); await sleep(200);
           await numEl.fill(cardNum);
           log('Номер карты введён', 'ok'); await sleep(300);
         } else { log('Поле номера карты не найдено', 'warn'); }
 
-        const expMonthEl = await trustFrame.$('input#regular-card-month-input');
+        const expMonthEl = await cardFrame.$('input#regular-card-month-input');
         if (expMonthEl) {
           await expMonthEl.click({ force: true }); await sleep(200);
           await expMonthEl.fill(expMonth);
           log('Месяц: ' + expMonth, 'ok'); await sleep(200);
         }
 
-        const expYearEl = await trustFrame.$('input#regular-card-year-input');
+        const expYearEl = await cardFrame.$('input#regular-card-year-input');
         if (expYearEl) {
           await expYearEl.click({ force: true }); await sleep(200);
           await expYearEl.fill(expYear);
           log('Год: ' + expYear, 'ok'); await sleep(200);
         }
 
-        const cvcEl = await trustFrame.$('.field-container__cvv_regular input, .field-container__cvv input');
+        const cvcEl = await cardFrame.$('input#regular-card-cvv-input, .field-container__cvv_regular input, .field-container__cvv input');
         if (cvcEl) {
           await cvcEl.click({ force: true }); await sleep(200);
           await cvcEl.fill(cardCvc);
@@ -537,7 +553,8 @@ async function runTest(config, emit) {
 
         await sleep(1000);
 
-        // Кнопка «Подключить» — ищем в payment-widget iframe
+        // Кнопка «Подключить» — сначала ищем там же, где была форма карты,
+        // затем в payment-widget iframe, и только потом на самой странице
         let widgetFrame = null;
         for (const f of page.frames()) {
           if (f.url().includes('payment-widget')) { widgetFrame = f; break; }
@@ -545,7 +562,8 @@ async function runTest(config, emit) {
         const connectBtnSel = sel(profile, 'connectBtn',
           'button[data-testid="trust-card-form-submit-button"], button:has-text("Подключить")',
           config.selectors);
-        const connectBtn = (widgetFrame ? await widgetFrame.$(connectBtnSel).catch(() => null) : null)
+        const connectBtn = await cardFrame.$(connectBtnSel).catch(() => null)
+          || (widgetFrame ? await widgetFrame.$(connectBtnSel).catch(() => null) : null)
           || await page.$(connectBtnSel).catch(() => null);
 
         if (connectBtn) {
