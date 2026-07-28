@@ -670,6 +670,35 @@ function setLoginMode(mode) {
   });
 }
 
+function getSelectedDevice() {
+  if (document.getElementById('br-iphone') && document.getElementById('br-iphone').checked) return 'iphone';
+  if (document.getElementById('br-pixel') && document.getElementById('br-pixel').checked) return 'pixel';
+  if (document.getElementById('br-yandex') && document.getElementById('br-yandex').checked) return 'yandex';
+  return 'chromium';
+}
+function makeBrowserTogglesExclusive() {
+  var ids = ['br-chrome','br-yandex','br-iphone','br-pixel'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', function() {
+      if (this.checked) {
+        ids.forEach(function(otherId) {
+          if (otherId !== id) {
+            var other = document.getElementById(otherId);
+            if (other) other.checked = false;
+          }
+        });
+      } else {
+        // хотя бы один вариант должен быть выбран всегда
+        var anyChecked = ids.some(function(i){ return document.getElementById(i) && document.getElementById(i).checked; });
+        if (!anyChecked) this.checked = true;
+      }
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', makeBrowserTogglesExclusive);
+
 function getCreds() {
   var emailVal = (document.getElementById('cfg-acc-email') || {value:''}).value.trim();
   var pass     = (document.getElementById('cfg-acc-pass')  || {value:''}).value.trim();
@@ -956,6 +985,7 @@ function runTests() {
 
   var config = {
     landingUrl:   landingUrl,
+    device:       getSelectedDevice(),
     checkYmGoal:  document.getElementById('sw-goals') ? document.getElementById('sw-goals').checked : true,
     checkWidget:  document.getElementById('sw-paywall') ? document.getElementById('sw-paywall').checked : true,
     account: creds.hasAccount ? {
