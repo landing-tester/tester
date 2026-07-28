@@ -237,6 +237,20 @@ async function runTest(config, emit) {
         locale: 'ru-RU',
         timezoneId: 'Europe/Moscow',
       });
+    } else if (config.device === 'yandex') {
+      // Реального бинарника Яндекс Браузера на Linux-сервере нет — используем обычный
+      // Chromium с User-Agent Яндекс Браузера. Это не полноценная эмуляция движка
+      // (внутри всё равно Blink/Chromium), но лендинг увидит именно этот UA.
+      log('Яндекс Браузер: реального движка на сервере нет, эмулируем через Chromium + UA Яндекс Браузера', 'warn');
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
+      });
+      context = await browser.newContext({
+        locale: 'ru-RU',
+        timezoneId: 'Europe/Moscow',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 YaBrowser/24.6.0.0 Safari/537.36',
+      });
     } else {
       browser = await chromium.launch({
         headless: true,
