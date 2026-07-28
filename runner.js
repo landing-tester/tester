@@ -445,6 +445,11 @@ async function runTest(config, emit) {
       log('Ищем виджет покупки...', 'info');
       await sleep(2000);
 
+      // На мобиле клик по CTA может открыть виджет в НОВОЙ странице (popup),
+      // а не в текущей — тогда весь дальнейший поиск виджета/полей нужно вести
+      // именно в этой новой странице, а не в исходной.
+      let activePage = page;
+
       // После авторизации кликаем CTA снова чтобы открыть виджет
       const ctaSels2 = (profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
@@ -456,17 +461,31 @@ async function runTest(config, emit) {
         'span:has-text("До года бесплатно")',
         '.button_type_new-design span',
       ];
-      await page.evaluate(() => window.scrollTo(0, 0));
+      await activePage.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
       for (const s of ctaSels2) {
         try {
-          const el = await page.$(s);
+          const el = await activePage.$(s);
           if (el) {
             await el.scrollIntoViewIfNeeded().catch(() => {});
             const box = await el.boundingBox();
             if (box && box.width > 0) {
-              await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
-              log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
+              if (isMobile) {
+                const [popup] = await Promise.all([
+                  context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+                  activePage.mouse.click(box.x + box.width/2, box.y + box.height/2),
+                ]);
+                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
+                if (popup) {
+                  log('Виджет открылся в отдельном окне', 'ok');
+                  await popup.waitForLoadState('domcontentloaded').catch(() => {});
+                  activePage = popup;
+                  await sleep(1500);
+                }
+              } else {
+                await activePage.mouse.click(box.x + box.width/2, box.y + box.height/2);
+                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
+              }
               await sleep(3000);
               break;
             }
@@ -475,7 +494,7 @@ async function runTest(config, emit) {
       }
 
       // Кнопка «Добавить карту»
-      const addCardBtn = await page.$('[data-testid="payment-method-button~new-card"], button:has-text("Добавить карту")').catch(() => null);
+      const addCardBtn = await activePage.$('[data-testid="payment-method-button~new-card"], button:has-text("Добавить карту")').catch(() => null);
       if (addCardBtn && await addCardBtn.isVisible().catch(() => false)) {
         await addCardBtn.click({ force: true });
         log('Клик «Добавить карту»', 'ok');
@@ -486,7 +505,7 @@ async function runTest(config, emit) {
       let trustFrame = null;
       const diehardTimeout = (profile && profile.diehardTimeout) || 15;
       for (let i = 0; i < diehardTimeout * 2; i++) {
-        for (const f of page.frames()) {
+        for (const f of activePage.frames()) {
           if (f.url().includes('diehard.yandex.ru') || f.url().includes('diehard.yandex.net')) {
             trustFrame = f; break;
           }
@@ -497,7 +516,7 @@ async function runTest(config, emit) {
 
       if (!trustFrame) {
         // проверяем payment-widget
-        for (const f of page.frames()) {
+        for (const f of activePage.frames()) {
           if (f.url().includes('payment-widget')) { trustFrame = f; break; }
         }
       }
@@ -521,7 +540,7 @@ async function runTest(config, emit) {
         // Поэтому ищем поле номера карты по ВСЕМ фреймам страницы, а не только в trustFrame.
         let cardFrame = null;
         for (let ci = 0; ci < 22; ci++) {
-          for (const f of page.frames()) {
+          for (const f of activePage.frames()) {
             const el = await f.$('input#regular-card-number-input').catch(() => null);
             if (el) { cardFrame = f; break; }
           }
@@ -570,7 +589,7 @@ async function runTest(config, emit) {
         // Кнопка «Подключить» — сначала ищем там же, где была форма карты,
         // затем в payment-widget iframe, и только потом на самой странице
         let widgetFrame = null;
-        for (const f of page.frames()) {
+        for (const f of activePage.frames()) {
           if (f.url().includes('payment-widget')) { widgetFrame = f; break; }
         }
         const connectBtnSel = sel(profile, 'connectBtn',
@@ -578,7 +597,7 @@ async function runTest(config, emit) {
           config.selectors);
         const connectBtn = await cardFrame.$(connectBtnSel).catch(() => null)
           || (widgetFrame ? await widgetFrame.$(connectBtnSel).catch(() => null) : null)
-          || await page.$(connectBtnSel).catch(() => null);
+          || await activePage.$(connectBtnSel).catch(() => null);
 
         if (connectBtn) {
           await connectBtn.click({ force: true });
@@ -592,11 +611,11 @@ async function runTest(config, emit) {
               // Сначала ждём появления SMS-поля на странице (до 60 секунд)
               log('Ждём SMS-поле на странице...', 'info');
               let smsField = null;
-              let smsFrame = page;
+              let smsFrame = activePage;
               for (let si = 0; si < 60; si++) {
                 // проверяем 3DS фрейм банка и ищем SMS поле
                 let has3ds = false;
-                for (const f of page.frames()) {
+                for (const f of activePage.frames()) {
 
                   const furl = f.url();
                   // 3DS фрейм банка — ждём именно страницу с формой ввода кода
@@ -620,14 +639,14 @@ async function runTest(config, emit) {
                 }
                 if (smsField || has3ds) break;
                 // страница напрямую
-                smsField = await page.$('#otp-container input, input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
-                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+                smsField = await activePage.$('#otp-container input, input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
                 smsField = null;
                 await sleep(1000);
               }
               if (smsField) {
                 log('SMS-поле найдено — показываем окошко', 'ok');
-              } else if (smsFrame && smsFrame !== page) {
+              } else if (smsFrame && smsFrame !== activePage) {
                 log('3DS фрейм банка найден — показываем окошко', 'ok');
               } else {
                 log('SMS-поле не найдено — всё равно показываем окошко', 'warn');
@@ -644,14 +663,14 @@ async function runTest(config, emit) {
               if (smsCode) {
                 // ищем поле для SMS в нескольких местах
                 let smsField = null;
-                let smsFrame = page;
+                let smsFrame = activePage;
                 for (let si = 0; si < 10; si++) {
-                  smsField = await page.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
-                  if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = page; break; }
+                  smsField = await activePage.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                  if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
                   smsField = null;
                   const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]']);
                   if (sf) { smsField = sf; smsFrame = trustFrame; break; }
-                  for (const f of page.frames()) {
+                  for (const f of activePage.frames()) {
                     if (f.url().includes('payment-widget')) {
                       const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i]').catch(() => null);
                       if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
@@ -667,7 +686,7 @@ async function runTest(config, emit) {
                   log('SMS-код введён в поле', 'ok');
                   await sleep(500);
                   await smsField.press('Enter');
-                } else if (smsFrame && smsFrame !== page) {
+                } else if (smsFrame && smsFrame !== activePage) {
                   // 3DS фрейм — фокусируем и вводим через keyboard
                   log('Вводим код в 3DS фрейм банка...', 'info');
                   try {
@@ -679,20 +698,20 @@ async function runTest(config, emit) {
                       await anyInput.press('Enter');
                       log('SMS-код введён в 3DS форму', 'ok');
                     } else {
-                      await page.keyboard.type(smsCode, { delay: 80 });
-                      await page.keyboard.press('Enter');
+                      await activePage.keyboard.type(smsCode, { delay: 80 });
+                      await activePage.keyboard.press('Enter');
                       log('SMS-код введён через клавиатуру', 'ok');
                     }
                   } catch (_) {
-                    await page.keyboard.type(smsCode, { delay: 80 });
-                    await page.keyboard.press('Enter');
+                    await activePage.keyboard.type(smsCode, { delay: 80 });
+                    await activePage.keyboard.press('Enter');
                     log('SMS-код введён через клавиатуру (fallback)', 'ok');
                   }
                 } else {
                   log('Вводим код через клавиатуру', 'info');
-                  await page.keyboard.type(smsCode, { delay: 80 });
+                  await activePage.keyboard.type(smsCode, { delay: 80 });
                   await sleep(300);
-                  await page.keyboard.press('Enter');
+                  await activePage.keyboard.press('Enter');
                 }
                 log('SMS-код введён: ' + smsCode, 'ok');
                 await sleep(3000);
@@ -715,10 +734,10 @@ async function runTest(config, emit) {
             const upsaleSel = '[data-testid="accept-button"], button:has-text("Попробовать бесплатно"), button:has-text("Попробовать")';
             let upsaleBtn = null;
             for (let i = 0; i < 30; i++) {
-              upsaleBtn = await page.$(upsaleSel).catch(() => null);
+              upsaleBtn = await activePage.$(upsaleSel).catch(() => null);
               if (upsaleBtn && await upsaleBtn.isVisible().catch(() => false)) break;
               upsaleBtn = null;
-              for (const f of page.frames()) {
+              for (const f of activePage.frames()) {
                 if (f.url().includes('payment-widget')) {
                   const btn = await f.$(upsaleSel).catch(() => null);
                   if (btn && await btn.isVisible().catch(() => false)) { upsaleBtn = btn; break; }
@@ -742,10 +761,10 @@ async function runTest(config, emit) {
             const skipSel = '[data-testid="button~skip"], button:has-text("Не сейчас")';
             let skipBtn = null;
             for (let i = 0; i < 15; i++) {
-              skipBtn = await page.$(skipSel).catch(() => null);
+              skipBtn = await activePage.$(skipSel).catch(() => null);
               if (skipBtn && await skipBtn.isVisible().catch(() => false)) break;
               skipBtn = null;
-              for (const f of page.frames()) {
+              for (const f of activePage.frames()) {
                 if (f.url().includes('payment-widget')) {
                   const btn = await f.$(skipSel).catch(() => null);
                   if (btn && await btn.isVisible().catch(() => false)) { skipBtn = btn; break; }
