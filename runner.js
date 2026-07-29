@@ -90,25 +90,20 @@ async function doYandexAuth(page, config, profile, results, emit) {
       try {
         const el = await page.$(s);
         if (el && await el.isVisible()) {
-          await el.click();
+          await el.tap().catch(() => el.click());
           log('Открыто меню «Ещё»', 'ok');
           await sleep(600);
-          // "Войти по логину" в новой вёрстке — не кнопка, а span/заголовок,
-          // поэтому проверяем разные типы элементов, а не только button
-          const loginItemSels = [
-            '[data-testid="menu-option-switchToLogin"]',
-            'button:has-text("Войти по логину")',
-            'div:has-text("Войти по логину")',
-            'span:has-text("Войти по логину")',
-            'li:has-text("Войти по логину")',
-          ];
-          let loginItem = null;
-          for (const ls of loginItemSels) {
-            loginItem = await page.$(ls).catch(() => null);
-            if (loginItem && await loginItem.isVisible().catch(() => false)) break;
-            loginItem = null;
+          // "Войти по логину" в новой вёрстке — не кнопка, а span/заголовок.
+          // Активно ЖДЁМ появления (не мгновенная проверка — меню может анимироваться).
+          const loginItemSel = '[data-testid="menu-option-switchToLogin"], button:has-text("Войти по логину"), div:has-text("Войти по логину"), span:has-text("Войти по логину"), li:has-text("Войти по логину")';
+          const loginItem = await page.waitForSelector(loginItemSel, { timeout: 3000 }).catch(() => null);
+          if (loginItem) {
+            await loginItem.tap().catch(() => loginItem.click().catch(() => {}));
+            await sleep(300);
+            log('Войти по логину', 'ok');
+          } else {
+            log('Пункт «Войти по логину» не появился за 3с', 'warn');
           }
-          if (loginItem) { await loginItem.click().catch(() => {}); await sleep(300); log('Войти по логину', 'ok'); }
           break;
         }
       } catch (_) {}
@@ -362,10 +357,12 @@ async function runTest(config, emit) {
             const box = await el.boundingBox();
             if (box && box.width > 0) {
               if (isMobile) {
-                // На мобилке авторизация может открыться в popup-окне
+                // На мобилке авторизация может открыться в popup-окне.
+                // Используем tap() — на мобильной вёрстке некоторые сайты
+                // реагируют иначе на touch-события, чем на обычный клик мышью.
                 const [popup] = await Promise.all([
                   context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  page.mouse.click(box.x + box.width/2, box.y + box.height/2),
+                  el.tap().catch(() => page.mouse.click(box.x + box.width/2, box.y + box.height/2)),
                 ]);
                 log('Клик CTA: ' + s.slice(0,50), 'ok');
                 ctaClicked = true;
@@ -489,7 +486,7 @@ async function runTest(config, emit) {
               if (isMobile) {
                 const [popup] = await Promise.all([
                   context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  activePage.mouse.click(box.x + box.width/2, box.y + box.height/2),
+                  el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2)),
                 ]);
                 log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
                 if (popup) {
@@ -516,6 +513,12 @@ async function runTest(config, emit) {
         log('Клик «Добавить карту»', 'ok');
         await sleep(2000);
       }
+
+      // Диагностика: показываем все фреймы прямо сейчас, не дожидаясь ошибки —
+      // полезно видеть, что вообще есть на странице в этот момент
+      const framesNow = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
+      log('Фреймы на странице сейчас: ' + (framesNow.length ? framesNow.slice(0,6).join(' | ').slice(0,300) : 'нет фреймов'), 'info');
+      log('URL страницы сейчас: ' + activePage.url(), 'info');
 
       // Ищем diehard iframe
       let trustFrame = null;
