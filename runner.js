@@ -2,9 +2,27 @@
 // Поддерживает десктоп (Chromium) и мобильный (iPhone) режим
 
 const { chromium, webkit, devices } = require('playwright');
+const fs = require('fs');
+const path = require('path');
 
 let selectorRegistry = [];
 try { selectorRegistry = require('./selectors.js'); } catch (_) {}
+
+const debugDir = path.join(__dirname, 'public', 'debug');
+try { fs.mkdirSync(debugDir, { recursive: true }); } catch (_) {}
+
+// Сохраняет скриншот в public/debug/ и возвращает публичный URL для просмотра в браузере
+async function saveDebugShot(pageOrFrame, name, emit) {
+  try {
+    const targetPage = pageOrFrame.screenshot ? pageOrFrame : null;
+    if (!targetPage) return null;
+    const fname = name + '-' + Date.now() + '.png';
+    await targetPage.screenshot({ path: path.join(debugDir, fname) });
+    const url = '/debug/' + fname;
+    if (emit) emit({ type: 'log', msg: 'Скриншот: ' + url, logType: 'info' });
+    return url;
+  } catch (_) { return null; }
+}
 
 function findProfile(url) {
   return selectorRegistry.find(p => p.match(url)) || null;
@@ -13,6 +31,7 @@ function findProfile(url) {
 function sel(profile, key, fallback, configSelectors) {
   return (configSelectors && configSelectors[key]) || (profile && profile[key]) || fallback;
 }
+
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -84,12 +103,16 @@ async function doYandexAuth(page, config, profile, results, emit) {
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await sleep(300);
 
+    await saveDebugShot(page, 'auth-start', emit);
+
     // кликаем «Ещё» → «Войти по логину»
     const moreSels = ['[data-testid="split-add-user-more-button"]','button:has-text("Ещё")','a:has-text("Ещё")'];
+    let moreClicked = false;
     for (const s of moreSels) {
       try {
         const el = await page.$(s);
         if (el && await el.isVisible()) {
+          moreClicked = true;
           await el.tap().catch(() => el.click());
           log('Открыто меню «Ещё»', 'ok');
           await sleep(600);
@@ -108,6 +131,8 @@ async function doYandexAuth(page, config, profile, results, emit) {
         }
       } catch (_) {}
     }
+    if (!moreClicked) log('Кнопка «Ещё» не найдена/не видима', 'warn');
+    await saveDebugShot(page, 'auth-after-menu', emit);
 
     const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
 
@@ -125,6 +150,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Логин: ' + credential, 'ok');
     } else {
       // клик по координатам
+      await saveDebugShot(page, 'auth-no-login-field', emit);
       try {
         const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
         if (bodyAuth) {
@@ -157,6 +183,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Пароль введён', 'ok');
     } else {
       log('Поле пароля не найдено за 8с — вводим по координатам', 'warn');
+      await saveDebugShot(page, 'auth-no-password-field', emit);
       try {
         const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
         if (bodyAuth) {
@@ -820,6 +847,7 @@ async function runTest(config, emit) {
           }
       } else {
         log('Виджет не найден', 'warn');
+        await saveDebugShot(activePage, 'widget-not-found', emit);
         result('Виджет открылся', 'warn', 'Не отображается');
       }
     }
