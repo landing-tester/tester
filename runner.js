@@ -404,6 +404,7 @@ async function runTest(config, emit) {
                   break;
                 } else {
                   await sleep(2000);
+                  await saveDebugShot(page, 'after-cta-click-no-popup', emit);
                 }
               } else {
                 await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
