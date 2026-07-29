@@ -374,6 +374,7 @@ async function runTest(config, emit) {
 
       await page.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
+      await saveDebugShot(page, 'before-cta-click', emit);
 
       let ctaClicked = false;
       for (const s of ctaSels) {
@@ -389,7 +390,7 @@ async function runTest(config, emit) {
                 // реагируют иначе на touch-события, чем на обычный клик мышью.
                 const [popup] = await Promise.all([
                   context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  el.tap().catch(() => page.mouse.click(box.x + box.width/2, box.y + box.height/2)),
+                  el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => page.mouse.click(box.x + box.width/2, box.y + box.height/2))),
                 ]);
                 log('Клик CTA: ' + s.slice(0,50), 'ok');
                 ctaClicked = true;
@@ -514,7 +515,7 @@ async function runTest(config, emit) {
               if (isMobile) {
                 const [popup] = await Promise.all([
                   context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2)),
+                  el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2))),
                 ]);
                 log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
                 if (popup) {
