@@ -515,10 +515,26 @@ async function runTest(config, emit) {
       }
 
       if (!trustFrame) {
-        // проверяем payment-widget
-        for (const f of activePage.frames()) {
-          if (f.url().includes('payment-widget')) { trustFrame = f; break; }
+        // проверяем payment-widget — тоже с повтором, а не одной попыткой
+        for (let i = 0; i < 10; i++) {
+          for (const f of activePage.frames()) {
+            if (f.url().includes('payment-widget')) { trustFrame = f; break; }
+          }
+          if (trustFrame) break;
+          await sleep(500);
         }
+      }
+
+      if (!trustFrame) {
+        // Диагностика: показываем все фреймы, которые реально есть на странице,
+        // чтобы понять, под каким доменом/паттерном виджет открылся на самом деле
+        const allFrameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
+        if (allFrameUrls.length) {
+          log('Виджет не найден. Фреймы на странице: ' + allFrameUrls.slice(0,6).join(' | ').slice(0,300), 'warn');
+        } else {
+          log('Виджет не найден. На странице вообще нет дочерних фреймов', 'warn');
+        }
+        log('URL текущей страницы: ' + activePage.url(), 'warn');
       }
 
       if (trustFrame) {
