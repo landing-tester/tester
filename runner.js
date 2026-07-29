@@ -93,8 +93,22 @@ async function doYandexAuth(page, config, profile, results, emit) {
           await el.click();
           log('Открыто меню «Ещё»', 'ok');
           await sleep(600);
-          const loginItem = await page.$('[data-testid="menu-option-switchToLogin"], button:has-text("Войти по логину")').catch(() => null);
-          if (loginItem) { await loginItem.click(); await sleep(300); log('Войти по логину', 'ok'); }
+          // "Войти по логину" в новой вёрстке — не кнопка, а span/заголовок,
+          // поэтому проверяем разные типы элементов, а не только button
+          const loginItemSels = [
+            '[data-testid="menu-option-switchToLogin"]',
+            'button:has-text("Войти по логину")',
+            'div:has-text("Войти по логину")',
+            'span:has-text("Войти по логину")',
+            'li:has-text("Войти по логину")',
+          ];
+          let loginItem = null;
+          for (const ls of loginItemSels) {
+            loginItem = await page.$(ls).catch(() => null);
+            if (loginItem && await loginItem.isVisible().catch(() => false)) break;
+            loginItem = null;
+          }
+          if (loginItem) { await loginItem.click().catch(() => {}); await sleep(300); log('Войти по логину', 'ok'); }
           break;
         }
       } catch (_) {}
@@ -103,6 +117,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
     const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
 
     const loginField = await findInput(page, [
+      'input[data-testid="text-field-input"][autocomplete="username"]',
       'input[placeholder*="Логин или email" i]',
       'input#passp-field-login',
       'input[name="login"]',
@@ -126,13 +141,14 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Логин введён по координатам', 'ok');
     }
 
-    const nextBtn = await page.$('button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+    const nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
     if (nextBtn) { await nextBtn.click(); } else { await page.keyboard.press('Enter'); }
 
     // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
     let passField = null;
     for (let pi = 0; pi < 10; pi++) {
       passField = await findInput(page, [
+        'input[data-testid="text-field-input"][autocomplete="current-password"]',
         'input[type="password"]', 'input[name="passwd"]',
         'input#passp-field-passwd', 'input[autocomplete="current-password"]',
       ]);
@@ -157,7 +173,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Пароль введён по координатам', 'ok');
     }
 
-    const nextBtn2 = await page.$('button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+    const nextBtn2 = await page.$('button[data-testid="password-next"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
     if (nextBtn2) { await nextBtn2.click(); } else { await page.keyboard.press('Enter'); }
     log('Ждём завершения авторизации...', 'info');
 
