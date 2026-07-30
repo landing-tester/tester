@@ -118,7 +118,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
           await sleep(600);
           // "Войти по логину" в новой вёрстке — не кнопка, а span/заголовок.
           // Активно ЖДЁМ появления (не мгновенная проверка — меню может анимироваться).
-          const loginItemSel = '[data-testid="menu-option-switchToLogin"], button:has-text("Войти по логину"), div:has-text("Войти по логину"), span:has-text("Войти по логину"), li:has-text("Войти по логину")';
+          const loginItemSel = '[data-testid="menu-option-switchToLogin"], text="Войти по логину"';
           const loginItem = await page.waitForSelector(loginItemSel, { timeout: 3000 }).catch(() => null);
           if (loginItem) {
             await loginItem.tap().catch(() => loginItem.click().catch(() => {}));
