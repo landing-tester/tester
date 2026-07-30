@@ -258,7 +258,7 @@ async function runTest(config, emit) {
   let browser, context;
   try {
     if (config.device === 'iphone') {
-      browser = await webkit.launch({ headless: true });
+      browser = await webkit.launch({ headless: false });
       context = await browser.newContext({
         ...devices['iPhone 13'],
         deviceScaleFactor: 2,
@@ -267,7 +267,7 @@ async function runTest(config, emit) {
       });
     } else if (config.device === 'pixel') {
       browser = await chromium.launch({
-        headless: true,
+        headless: false,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
@@ -281,7 +281,7 @@ async function runTest(config, emit) {
       // (внутри всё равно Blink/Chromium), но лендинг увидит именно этот UA.
       log('Яндекс Браузер: реального движка на сервере нет, эмулируем через Chromium + UA Яндекс Браузера', 'warn');
       browser = await chromium.launch({
-        headless: true,
+        headless: false,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
@@ -291,7 +291,7 @@ async function runTest(config, emit) {
       });
     } else {
       browser = await chromium.launch({
-        headless: true,
+        headless: false,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
