@@ -258,7 +258,7 @@ async function runTest(config, emit) {
   let browser, context;
   try {
     if (config.device === 'iphone') {
-      browser = await webkit.launch({ headless: false });
+      browser = await webkit.launch({ headless: true });
       context = await browser.newContext({
         ...devices['iPhone 13'],
         deviceScaleFactor: 2,
@@ -267,7 +267,7 @@ async function runTest(config, emit) {
       });
     } else if (config.device === 'pixel') {
       browser = await chromium.launch({
-        headless: false,
+        headless: true,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
@@ -281,7 +281,7 @@ async function runTest(config, emit) {
       // (внутри всё равно Blink/Chromium), но лендинг увидит именно этот UA.
       log('Яндекс Браузер: реального движка на сервере нет, эмулируем через Chromium + UA Яндекс Браузера', 'warn');
       browser = await chromium.launch({
-        headless: false,
+        headless: true,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
@@ -291,7 +291,7 @@ async function runTest(config, emit) {
       });
     } else {
       browser = await chromium.launch({
-        headless: false,
+        headless: true,
         args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
       });
       context = await browser.newContext({
@@ -374,10 +374,30 @@ async function runTest(config, emit) {
 
       await page.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
+
+      // Поп-ап (например, "Войдите, чтобы продолжить") мог появиться заново
+      // после скролла/времени на странице — закрываем его ещё раз перед кликом по CTA
+      const popupAgain = await handlePopup(page, profile, emit);
+      if (popupAgain === 'closed') { await sleep(800); }
+
       await saveDebugShot(page, 'before-cta-click', emit);
 
       let ctaClicked = false;
-      for (const s of ctaSels) {
+
+      if (popupAgain === 'auth_required') {
+        // Поп-ап сам по себе — это уже экран входа (например "Войдите, чтобы продолжить").
+        // Кликаем прямо в него, не пытаясь достучаться до кнопки лендинга под ним.
+        const popupLoginSel = sel(profile, 'popupLogin', 'div.sign-in__button, .sign-in__button, button:has-text("Войти"), a:has-text("Войти"), [class*="auth"] button', config.selectors);
+        const loginBtn = await page.$(popupLoginSel).catch(() => null);
+        if (loginBtn && await loginBtn.isVisible().catch(() => false)) {
+          await loginBtn.click({ timeout: 5000 }).catch(() => loginBtn.tap().catch(() => {}));
+          log('Клик «Войти» в поп-апе (повторная проверка)', 'ok');
+          ctaClicked = true;
+          await sleep(2000);
+        }
+      }
+
+      for (const s of (ctaClicked ? [] : ctaSels)) {
         try {
           const el = await page.$(s);
           if (el) {
