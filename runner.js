@@ -384,6 +384,16 @@ async function runTest(config, emit) {
             await el.scrollIntoViewIfNeeded().catch(() => {});
             const box = await el.boundingBox();
             if (box && box.width > 0) {
+              // Диагностика: что реально лежит в точке клика (вдруг сверху невидимый оверлей)
+              try {
+                const cx = box.x + box.width/2, cy = box.y + box.height/2;
+                const atPoint = await page.evaluate(([x,y]) => {
+                  const el2 = document.elementFromPoint(x, y);
+                  return el2 ? (el2.outerHTML || '').slice(0, 200) : 'null';
+                }, [cx, cy]);
+                log('В точке клика реально: ' + atPoint, 'info');
+              } catch (_) {}
+
               if (isMobile) {
                 // На мобилке авторизация может открыться в popup-окне.
                 // Используем tap() — на мобильной вёрстке некоторые сайты
