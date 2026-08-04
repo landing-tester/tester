@@ -417,6 +417,13 @@ async function runTest(config, emit) {
 
       let ctaClicked = false;
 
+      // Активно ждём появления CTA (карусель/контент на мобиле может грузиться с задержкой) —
+      // раньше была одна мгновенная проверка, из-за которой кнопка иногда "не находилась",
+      // просто не успев отрендериться
+      if (!ctaClicked && !(popupAgain === 'auth_required')) {
+        await page.waitForSelector(ctaSels.join(', '), { timeout: 8000 }).catch(() => {});
+      }
+
       if (popupAgain === 'auth_required') {
         // Поп-ап сам по себе — это уже экран входа (например "Войдите, чтобы продолжить").
         // Кликаем прямо в него, не пытаясь достучаться до кнопки лендинга под ним.
@@ -568,6 +575,7 @@ async function runTest(config, emit) {
       ];
       await activePage.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
+      await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 8000 }).catch(() => {});
       for (const s of ctaSels2) {
         try {
           const el = await activePage.$(s);
