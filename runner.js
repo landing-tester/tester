@@ -179,7 +179,15 @@ async function doYandexAuth(page, config, profile, results, emit) {
     }
 
     const nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
-    if (nextBtn) { await nextBtn.click(); } else { await page.keyboard.press('Enter'); }
+    if (nextBtn) {
+      try {
+        await nextBtn.click({ timeout: 5000 });
+      } catch (_) {
+        log('Клик «Войти/Далее» перекрыт — пробуем force и Enter', 'warn');
+        await saveDebugShot(page, 'click-intercepted-login-next', emit);
+        await nextBtn.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+      }
+    } else { await page.keyboard.press('Enter'); }
 
     // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
     let passField = null;
@@ -212,7 +220,15 @@ async function doYandexAuth(page, config, profile, results, emit) {
     }
 
     const nextBtn2 = await page.$('button[data-testid="password-next"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
-    if (nextBtn2) { await nextBtn2.click(); } else { await page.keyboard.press('Enter'); }
+    if (nextBtn2) {
+      try {
+        await nextBtn2.click({ timeout: 5000 });
+      } catch (_) {
+        log('Клик «Войти/Далее» (после пароля) перекрыт — пробуем force и Enter', 'warn');
+        await saveDebugShot(page, 'click-intercepted-password-next', emit);
+        await nextBtn2.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+      }
+    } else { await page.keyboard.press('Enter'); }
     log('Ждём завершения авторизации...', 'info');
 
     await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
