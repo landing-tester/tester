@@ -218,12 +218,13 @@ async function doYandexAuth(page, config, profile, results, emit) {
     await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
     await sleep(1500);
 
-    if (page.url().includes('passport.yandex')) {
-      // даём ещё один шанс — иногда паспорт ненадолго возвращает на промежуточный
-      // экран (например, повторный ввод пароля) перед финальным редиректом
-      log('Ещё на passport, ждём повторно...', 'info');
-      await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 8000 }).catch(() => {});
-      await sleep(1000);
+    // Паспорт иногда проходит через несколько промежуточных шагов
+    // (prepare → auth/finished → реальный редирект на лендинг) —
+    // даём до 3 дополнительных попыток дождаться ухода с passport.yandex
+    for (let ai = 0; ai < 3 && page.url().includes('passport.yandex'); ai++) {
+      log('Ещё на passport (' + page.url().slice(0, 80) + '), ждём повторно...', 'info');
+      await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 10000 }).catch(() => {});
+      await sleep(1500);
     }
 
     if (!page.url().includes('passport.yandex')) {
