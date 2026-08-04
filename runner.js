@@ -421,7 +421,7 @@ async function runTest(config, emit) {
       // раньше была одна мгновенная проверка, из-за которой кнопка иногда "не находилась",
       // просто не успев отрендериться
       if (!ctaClicked && !(popupAgain === 'auth_required')) {
-        await page.waitForSelector(ctaSels.join(', '), { timeout: 8000 }).catch(() => {});
+        await page.waitForSelector(ctaSels.join(', '), { timeout: 15000 }).catch(() => {});
       }
 
       if (popupAgain === 'auth_required') {
@@ -575,7 +575,7 @@ async function runTest(config, emit) {
       ];
       await activePage.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
-      await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 8000 }).catch(() => {});
+      await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 15000 }).catch(() => {});
       for (const s of ctaSels2) {
         try {
           const el = await activePage.$(s);
