@@ -127,7 +127,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
             const handle = await page.evaluateHandle(() => {
               const all = document.querySelectorAll('body *');
               for (const el of all) {
-                if (el.children.length === 0 && el.textContent && el.textContent.trim() === 'Войти по логину') {
+                if (el.children.length === 0 && el.textContent && el.textContent.replace(/\s+/g, ' ').trim() === 'Войти по логину') {
                   return el;
                 }
               }
