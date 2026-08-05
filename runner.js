@@ -204,6 +204,9 @@ async function doYandexAuth(page, config, profile, results, emit) {
     if (passField) {
       await passField.click(); await sleep(200);
       await passField.fill(config.account.password);
+      // подстраховка: дублируем через реальную печать по символам —
+      // React иногда завязывает валидацию на keyup, а не только на fill()/input
+      await passField.press('End').catch(() => {});
       log('Пароль введён', 'ok');
     } else {
       log('Поле пароля не найдено за 8с — вводим по координатам', 'warn');
@@ -219,16 +222,39 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Пароль введён по координатам', 'ok');
     }
 
-    const nextBtn2 = await page.$('button[data-testid="password-next"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+    const nextBtn2Sel = 'button[data-testid="password-next"], button:has-text("Войти"), button:has-text("Далее")';
+    let nextBtn2 = await page.$(nextBtn2Sel).catch(() => null);
+
+    // Кнопка может быть ещё disabled сразу после fill() — ждём до 3с, пока станет активной
     if (nextBtn2) {
-      try {
-        await nextBtn2.click({ timeout: 5000 });
-      } catch (_) {
-        log('Клик «Войти/Далее» (после пароля) перекрыт — пробуем force и Enter', 'warn');
-        await saveDebugShot(page, 'click-intercepted-password-next', emit);
-        await nextBtn2.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+      for (let bi = 0; bi < 6; bi++) {
+        const isDisabled = await nextBtn2.evaluate(b => b.disabled || b.getAttribute('aria-disabled') === 'true').catch(() => false);
+        if (!isDisabled) break;
+        await sleep(500);
       }
-    } else { await page.keyboard.press('Enter'); }
+    }
+
+    async function clickNext2() {
+      nextBtn2 = await page.$(nextBtn2Sel).catch(() => null);
+      if (nextBtn2) {
+        try {
+          await nextBtn2.click({ timeout: 5000 });
+        } catch (_) {
+          log('Клик «Войти/Далее» (после пароля) перекрыт — пробуем force и Enter', 'warn');
+          await saveDebugShot(page, 'click-intercepted-password-next', emit);
+          await nextBtn2.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+        }
+      } else { await page.keyboard.press('Enter'); }
+    }
+
+    await clickNext2();
+    await sleep(1500);
+    // Если через 1.5с URL всё ещё содержит /auth/password — пробуем клик ещё раз
+    // (возможно, первый клик пришёлся на ещё-disabled кнопку и ничего не сделал)
+    if (page.url().includes('/auth/password')) {
+      log('Всё ещё на экране пароля — пробуем клик «Далее» повторно', 'warn');
+      await clickNext2();
+    }
     log('Ждём завершения авторизации...', 'info');
 
     await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
