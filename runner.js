@@ -103,8 +103,6 @@ async function doYandexAuth(page, config, profile, results, emit) {
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await sleep(300);
 
-    await saveDebugShot(page, 'auth-start', emit);
-
     // кликаем «Ещё» → «Войти по логину»
     const moreSels = ['[data-testid="split-add-user-more-button"]','button:has-text("Ещё")','a:has-text("Ещё")'];
     let moreClicked = false;
@@ -148,7 +146,6 @@ async function doYandexAuth(page, config, profile, results, emit) {
       } catch (_) {}
     }
     if (!moreClicked) log('Кнопка «Ещё» не найдена/не видима', 'warn');
-    await saveDebugShot(page, 'auth-after-menu', emit);
 
     const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
     log('Логин (для отладки, в квадратных скобках): [' + credential + '] длина: ' + credential.length, 'info');
@@ -321,6 +318,15 @@ async function runTest(config, emit) {
   const results = [];
   const ymGoals = [];
 
+  // Очищаем скриншоты предыдущих прогонов — иначе public/debug/ будет
+  // бесконечно копиться и есть место на диске
+  try {
+    const oldFiles = fs.readdirSync(debugDir);
+    for (const f of oldFiles) {
+      try { fs.unlinkSync(path.join(debugDir, f)); } catch (_) {}
+    }
+  } catch (_) {}
+
   function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
   function result(name, status, note, error) {
     const r = { name, status };
@@ -470,8 +476,6 @@ async function runTest(config, emit) {
       const popupAgain = await handlePopup(page, profile, emit);
       if (popupAgain === 'closed') { await sleep(800); }
 
-      await saveDebugShot(page, 'before-cta-click', emit);
-
       let ctaClicked = false;
 
       // Активно ждём появления CTA (карусель/контент на мобиле может грузиться с задержкой) —
@@ -532,7 +536,6 @@ async function runTest(config, emit) {
                   break;
                 } else {
                   await sleep(2000);
-                  await saveDebugShot(page, 'after-cta-click-no-popup', emit);
                 }
               } else {
                 await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
