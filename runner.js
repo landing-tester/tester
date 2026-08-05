@@ -151,6 +151,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
     await saveDebugShot(page, 'auth-after-menu', emit);
 
     const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
+    log('Логин (для отладки, в квадратных скобках): [' + credential + '] длина: ' + credential.length, 'info');
 
     let loginField = null;
     for (let li = 0; li < 15; li++) {
@@ -168,7 +169,8 @@ async function doYandexAuth(page, config, profile, results, emit) {
     if (loginField) {
       await loginField.click(); await sleep(200);
       await loginField.fill(credential);
-      log('Логин: ' + credential, 'ok');
+      const actualVal = await loginField.inputValue().catch(() => '?');
+      log('Логин: ' + credential + ' (в поле реально: [' + actualVal + '])', 'ok');
     } else {
       // клик по координатам
       await saveDebugShot(page, 'auth-no-login-field', emit);
