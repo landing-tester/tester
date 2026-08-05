@@ -183,16 +183,40 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Логин введён по координатам', 'ok');
     }
 
-    const nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+    let nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+
+    // Кнопка может быть ещё disabled сразу после fill() — ждём до 3с, пока станет активной
     if (nextBtn) {
-      try {
-        await nextBtn.click({ timeout: 5000 });
-      } catch (_) {
-        log('Клик «Войти/Далее» перекрыт — пробуем force и Enter', 'warn');
-        await saveDebugShot(page, 'click-intercepted-login-next', emit);
-        await nextBtn.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+      for (let bi = 0; bi < 6; bi++) {
+        const isDisabled = await nextBtn.evaluate(b => b.disabled || b.getAttribute('aria-disabled') === 'true').catch(() => false);
+        if (!isDisabled) break;
+        await sleep(500);
       }
-    } else { await page.keyboard.press('Enter'); }
+    }
+
+    async function clickNextLogin() {
+      nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
+      if (nextBtn) {
+        try {
+          await nextBtn.click({ timeout: 5000 });
+        } catch (_) {
+          log('Клик «Войти/Далее» перекрыт — пробуем force и Enter', 'warn');
+          await saveDebugShot(page, 'click-intercepted-login-next', emit);
+          await nextBtn.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
+        }
+      } else { await page.keyboard.press('Enter'); }
+    }
+
+    await clickNextLogin();
+    await sleep(1500);
+    // Если через 1.5с всё ещё на экране логина (URL не сменился на password-шаг) —
+    // пробуем клик ещё раз, возможно первый пришёлся на ещё-disabled кнопку
+    const urlAfterFirstClick = page.url();
+    await sleep(500);
+    if (page.url() === urlAfterFirstClick) {
+      log('Похоже, экран логина не сменился — пробуем клик «Войти» повторно', 'warn');
+      await clickNextLogin();
+    }
 
     // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
     let passField = null;
