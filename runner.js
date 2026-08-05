@@ -152,13 +152,18 @@ async function doYandexAuth(page, config, profile, results, emit) {
 
     const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
 
-    const loginField = await findInput(page, [
-      'input[data-testid="text-field-input"][autocomplete="username"]',
-      'input[placeholder*="Логин или email" i]',
-      'input#passp-field-login',
-      'input[name="login"]',
-      'input[autocomplete="username"]',
-    ]);
+    let loginField = null;
+    for (let li = 0; li < 15; li++) {
+      loginField = await findInput(page, [
+        'input[data-testid="text-field-input"][autocomplete="username"]',
+        'input[placeholder*="Логин или email" i]',
+        'input#passp-field-login',
+        'input[name="login"]',
+        'input[autocomplete="username"]',
+      ]);
+      if (loginField) break;
+      await sleep(1000);
+    }
 
     if (loginField) {
       await loginField.click(); await sleep(200);
@@ -191,14 +196,14 @@ async function doYandexAuth(page, config, profile, results, emit) {
 
     // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
     let passField = null;
-    for (let pi = 0; pi < 10; pi++) {
+    for (let pi = 0; pi < 15; pi++) {
       passField = await findInput(page, [
         'input[data-testid="text-field-input"][autocomplete="current-password"]',
         'input[type="password"]', 'input[name="passwd"]',
         'input#passp-field-passwd', 'input[autocomplete="current-password"]',
       ]);
       if (passField) break;
-      await sleep(800);
+      await sleep(1000);
     }
 
     if (passField) {
