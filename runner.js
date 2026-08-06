@@ -1117,6 +1117,19 @@ async function checkOneDevice(deviceKey, label, landingUrl, emit) {
       throw e; // без загруженной страницы остальные проверки бессмысленны
     }
 
+    // Закрываем поп-ап (например "Войдите, чтобы продолжить"), если он есть —
+    // иначе он перекрывает весь лендинг на скриншоте
+    const profile = findProfile(landingUrl);
+    try {
+      const popupResult = await withTimeout(handlePopup(page, profile, emit), 10000);
+      if (popupResult === 'auth_required') {
+        // Поп-ап без крестика — сам является формой входа. Пробуем найти
+        // и убрать его иначе: жмём Escape или кликаем мимо (по фону)
+        await page.keyboard.press('Escape').catch(() => {});
+        await sleep(500);
+      }
+    } catch (_) {}
+
     // H1
     const h1Els = await page.$$('h1').catch(() => []);
     let h1Text = '';
@@ -1130,7 +1143,6 @@ async function checkOneDevice(deviceKey, label, landingUrl, emit) {
     else pushCheck('H1 присутствует', 'warn', 'Не найден');
 
     // CTA видна (используем профиль лендинга, если есть)
-    const profile = findProfile(landingUrl);
     const ctaSels = (profile && profile.cta) || [
       'button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")',
       'button:has-text("Попробовать")', 'button:has-text("Подключить")',
