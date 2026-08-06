@@ -35,6 +35,17 @@ function sel(profile, key, fallback, configSelectors) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Оборачивает промис жёстким таймаутом — нужно для запросов к отдельным
+// фреймам (frame.$()), которые сами по себе не имеют встроенного таймаута
+// и могут зависнуть навсегда, если конкретный фрейм в нестабильном состоянии
+// (перезагружается/переходит на другой URL прямо в этот момент)
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout ' + ms + 'ms')), ms)),
+  ]);
+}
+
 async function findInput(ctx, selectors) {
   for (const s of selectors) {
     try {
@@ -737,7 +748,7 @@ async function runTestInner(config, emit, browserRef) {
         let cardFrame = null;
         for (let ci = 0; ci < 22; ci++) {
           for (const f of activePage.frames()) {
-            const el = await f.$('input#regular-card-number-input').catch(() => null);
+            const el = await withTimeout(f.$('input#regular-card-number-input'), 2000).catch(() => null);
             if (el) { cardFrame = f; break; }
           }
           if (cardFrame) break;
@@ -825,7 +836,7 @@ async function runTestInner(config, emit, browserRef) {
                   }
                   // ищем поле напрямую
                   try {
-                    const sf2 = await f.$('#otp-container input, input[maxlength="6"], input[name*="otp"], input[name*="code"], input[id*="otp"]');
+                    const sf2 = await withTimeout(f.$('#otp-container input, input[maxlength="6"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
                     if (sf2 && await sf2.isVisible().catch(() => false)) {
                       smsField = sf2; smsFrame = f;
                       log('SMS-поле: ' + furl.slice(0, 80), 'ok');
@@ -868,7 +879,7 @@ async function runTestInner(config, emit, browserRef) {
                   if (sf) { smsField = sf; smsFrame = trustFrame; break; }
                   for (const f of activePage.frames()) {
                     if (f.url().includes('payment-widget')) {
-                      const sf2 = await f.$('input[maxlength="6"], input[placeholder*="код" i]').catch(() => null);
+                      const sf2 = await withTimeout(f.$('input[maxlength="6"], input[placeholder*="код" i]'), 2000).catch(() => null);
                       if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
                     }
                   }
@@ -935,7 +946,7 @@ async function runTestInner(config, emit, browserRef) {
               upsaleBtn = null;
               for (const f of activePage.frames()) {
                 if (f.url().includes('payment-widget')) {
-                  const btn = await f.$(upsaleSel).catch(() => null);
+                  const btn = await withTimeout(f.$(upsaleSel), 2000).catch(() => null);
                   if (btn && await btn.isVisible().catch(() => false)) { upsaleBtn = btn; break; }
                 }
               }
@@ -962,7 +973,7 @@ async function runTestInner(config, emit, browserRef) {
               skipBtn = null;
               for (const f of activePage.frames()) {
                 if (f.url().includes('payment-widget')) {
-                  const btn = await f.$(skipSel).catch(() => null);
+                  const btn = await withTimeout(f.$(skipSel), 2000).catch(() => null);
                   if (btn && await btn.isVisible().catch(() => false)) { skipBtn = btn; break; }
                 }
               }
