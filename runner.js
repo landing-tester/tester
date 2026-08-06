@@ -944,11 +944,11 @@ async function runTestInner(config, emit, browserRef) {
               upsaleBtn = await activePage.$(upsaleSel).catch(() => null);
               if (upsaleBtn && await upsaleBtn.isVisible().catch(() => false)) break;
               upsaleBtn = null;
+              // Ищем во ВСЕХ фреймах, а не только тех, где в URL есть "payment-widget" —
+              // экран опции иногда рендерится в другом фрейме (например diehard)
               for (const f of activePage.frames()) {
-                if (f.url().includes('payment-widget')) {
-                  const btn = await withTimeout(f.$(upsaleSel), 2000).catch(() => null);
-                  if (btn && await btn.isVisible().catch(() => false)) { upsaleBtn = btn; break; }
-                }
+                const btn = await withTimeout(f.$(upsaleSel), 2000).catch(() => null);
+                if (btn && await btn.isVisible().catch(() => false)) { upsaleBtn = btn; break; }
               }
               if (upsaleBtn) break;
               await sleep(1000);
@@ -961,6 +961,9 @@ async function runTestInner(config, emit, browserRef) {
               await sleep(2000);
             } else {
               result('Опция принята', 'warn', 'Экран не появился');
+              const frameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
+              log('Опция не найдена. Фреймы: ' + (frameUrls.length ? frameUrls.slice(0,6).join(' | ').slice(0,300) : 'нет'), 'warn');
+              await saveDebugShot(activePage, 'upsale-not-found', emit);
             }
 
             // «Не сейчас»
@@ -972,10 +975,8 @@ async function runTestInner(config, emit, browserRef) {
               if (skipBtn && await skipBtn.isVisible().catch(() => false)) break;
               skipBtn = null;
               for (const f of activePage.frames()) {
-                if (f.url().includes('payment-widget')) {
-                  const btn = await withTimeout(f.$(skipSel), 2000).catch(() => null);
-                  if (btn && await btn.isVisible().catch(() => false)) { skipBtn = btn; break; }
-                }
+                const btn = await withTimeout(f.$(skipSel), 2000).catch(() => null);
+                if (btn && await btn.isVisible().catch(() => false)) { skipBtn = btn; break; }
               }
               if (skipBtn) break;
               await sleep(1000);
@@ -984,6 +985,8 @@ async function runTestInner(config, emit, browserRef) {
               await skipBtn.click({ force: true });
               log('Клик «Не сейчас»', 'ok');
               result('Подписка оформлена', 'pass');
+            } else {
+              log('Кнопка «Не сейчас» не найдена', 'warn');
             }
 
           } else {
