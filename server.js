@@ -2,7 +2,7 @@ const express   = require('express');
 const http      = require('http');
 const WebSocket = require('ws');
 const path      = require('path');
-const { runTest } = require('./runner.js');
+const { runTest, runVisualCheck } = require('./runner.js');
 
 const app    = express();
 const server = http.createServer(app);
@@ -127,6 +127,38 @@ app.post('/run', async (req, res) => {
 
 app.get('/status', (req, res) => {
   res.json({ running: testRunning });
+});
+
+app.post('/run-visual', async (req, res) => {
+  if (testRunning) return res.status(409).json({ error: 'Тест уже запущен' });
+
+  const config = req.body;
+  if (!config.landingUrl) return res.status(400).json({ error: 'Укажите URL лендинга' });
+
+  res.json({ ok: true });
+  testRunning = true;
+  console.log('[visual] === НАЧАЛО ПРОВЕРКИ ВЁРСТКИ === ' + config.landingUrl);
+
+  try {
+    await runVisualCheck(config, (event) => {
+      if (event.type === 'log') {
+        console.log('[visual] ' + (event.logType || 'info') + ': ' + event.msg);
+      } else if (event.type === 'visual_result') {
+        console.log('[visual] результат для ' + event.device + ': ' +
+          event.checks.map(c => c.name + '=' + c.status).join(', '));
+      } else if (event.type === 'visual_done') {
+        console.log('[visual] готово');
+      }
+      broadcast(event);
+    });
+  } catch (err) {
+    console.log('[visual] === ИСКЛЮЧЕНИЕ === ' + err.message);
+    broadcast({ type: 'error', message: err.message });
+  } finally {
+    testRunning = false;
+    console.log('[visual] === КОНЕЦ ПРОВЕРКИ ===');
+    broadcast({ type: 'done' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
