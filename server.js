@@ -40,6 +40,22 @@ wss.on('connection', ws => {
 });
 
 function broadcast(data) {
+  // Дублируем в консоль сервера (видно через pm2 logs), чтобы можно было
+  // разобрать, что происходило во время теста, даже если клиент отключился
+  try {
+    if (data.type === 'log') {
+      console.log('[test] ' + (data.logType || 'info') + ': ' + data.msg);
+    } else if (data.type === 'result') {
+      console.log('[test] result: ' + data.name + ' -> ' + data.status + (data.note ? ' (' + data.note + ')' : ''));
+    } else if (data.type === 'error') {
+      console.log('[test] ERROR: ' + data.message);
+    } else if (data.type === 'done') {
+      console.log('[test] done');
+    } else if (data.type === 'goals') {
+      console.log('[test] goals for ' + data.svc + ': ' + (data.firedGoals || []).join(', '));
+    }
+  } catch (_) {}
+
   const msg = JSON.stringify(data);
   clients.forEach(ws => {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
@@ -57,6 +73,7 @@ app.post('/run', async (req, res) => {
 
   res.json({ ok: true });
   testRunning = true;
+  console.log('[test] === НАЧАЛО ПРОГОНА === ' + config.landingUrl + ' устройство: ' + (config.device || 'chromium'));
 
   // Находим активный WebSocket клиент
   activeWs = null;
@@ -89,6 +106,7 @@ app.post('/run', async (req, res) => {
           }
         } else {
           // Нет ни одного живого соединения — некому показать модалку
+          console.log('[test] SMS требуется, но нет живого соединения — пропускаем');
           event.resolve('');
         }
         return;
@@ -97,9 +115,11 @@ app.post('/run', async (req, res) => {
     });
 
   } catch (err) {
+    console.log('[test] === ИСКЛЮЧЕНИЕ === ' + err.message);
     broadcast({ type: 'error', message: err.message });
   } finally {
     testRunning = false;
+    console.log('[test] === КОНЕЦ ПРОГОНА ===');
     broadcast({ type: 'done' });
     activeWs = null;
   }
