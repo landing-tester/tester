@@ -208,6 +208,23 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .goal-item-label{flex:1;font-size:12px;color:var(--text)}
 .goal-item-id{font-size:10px;color:var(--faint);font-family:var(--font-mono);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* VISUAL CHECK */
+.visual-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.visual-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--faint);border-radius:12px;overflow:hidden;transition:border-color .2s}
+.visual-card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.visual-card-title{font-size:12px;font-weight:600;font-family:var(--font-head)}
+.visual-card-status{font-size:10px;color:var(--muted)}
+.visual-shot-wrap{position:relative;background:var(--bg);height:280px;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;cursor:pointer}
+.visual-shot-wrap img{width:100%;height:auto;display:block}
+.visual-shot-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--faint);font-size:11px;gap:6px}
+.visual-spinner{width:20px;height:20px;border:2px solid var(--faint);border-top-color:var(--accent);border-radius:50%;animation:visualspin .8s linear infinite}
+@keyframes visualspin{to{transform:rotate(360deg)}}
+.visual-checks{padding:10px 14px;display:flex;flex-direction:column;gap:5px}
+.visual-check-row{display:flex;align-items:center;gap:8px;font-size:11px}
+.visual-check-icon{width:14px;flex-shrink:0;text-align:center}
+.visual-check-name{flex:1;color:var(--text)}
+.visual-check-note{color:var(--faint);font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* LOG */
 .log-area{background:var(--bg);padding:14px;font-family:var(--font-mono);font-size:12px;line-height:1.9;max-height:480px;overflow-y:auto}
 .ll-ok{color:var(--green)} .ll-err{color:var(--red)} .ll-info{color:#a89dff} .ll-muted{color:var(--faint)} .ll-warn{color:var(--amber)}
@@ -298,6 +315,8 @@ html,body{overflow-x:hidden;max-width:100vw}
   .result-card-head{padding:10px 12px}
   .goal-card{padding:14px}
   .goals-grid{grid-template-columns:1fr}
+  .visual-grid{grid-template-columns:1fr}
+  .visual-shot-wrap{height:220px}
   .modal{width:88vw;max-width:340px;padding:22px}
   .results-toolbar{flex-direction:column;align-items:stretch}
   .log-toolbar{flex-direction:column;align-items:stretch}
@@ -348,6 +367,11 @@ html,body{overflow-x:hidden;max-width:100vw}
     <span class="ni-icon">☑</span>
     <span class="ni-label">Чек-лист</span>
     <span class="ni-count" id="nc-cl">0</span>
+  </div>
+  <div class="nav-item" onclick="nav('visual',this)" title="Вёрстка">
+    <span class="ni-icon">▦</span>
+    <span class="ni-label">Вёрстка</span>
+    <span class="ni-count" id="nc-visual">0</span>
   </div>
   <div class="sidebar-divider"></div>
   <div class="nav-item" onclick="nav('config',this)" title="Конфигурация">
@@ -442,6 +466,17 @@ html,body{overflow-x:hidden;max-width:100vw}
         Пункты <span style="color:var(--text)">«Проверен незалогин»</span> и <span style="color:var(--text)">«Проверен новичок»</span> — ручные.
       </div>
     </div>
+  </div>
+</div>
+
+<!-- VISUAL -->
+<div class="page" id="page-visual">
+  <div style="text-align:center;font-size:12px;color:var(--muted)">Одна и та же страница на 4 устройствах — без авторизации и оплаты, только внешний вид</div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-primary" id="btn-run-visual" onclick="runVisualCheck()">▦ Проверить вёрстку</button>
+  </div>
+  <div class="visual-grid" id="visual-grid">
+    <div class="empty-state" style="grid-column:1/-1"><div class="es-icon">▦</div>Нажмите «Проверить вёрстку»</div>
   </div>
 </div>
 
@@ -724,7 +759,7 @@ function pickBrowser(arr) { return arr[Math.floor(Math.random() * arr.length)] |
 
 var PAGE_NAMES = {
   dashboard:'дашборд', results:'результаты',
-  goals:'цели метрики', checklist:'чек-лист', config:'конфигурация',
+  goals:'цели метрики', checklist:'чек-лист', visual:'вёрстка', config:'конфигурация',
   log:'лог запуска'
 };
 function closeNavLabel(el) {
@@ -1621,6 +1656,142 @@ function closeSmsModal(code) {
   document.getElementById('sms-code-input').value = '';
   document.getElementById('sms-timer').textContent = '2:00';
   if (smsResolve) { smsResolve(code); smsResolve = null; }
+}
+
+
+var VISUAL_DEVICE_LABELS = {
+  chromium: 'Chromium Desktop', yandex: 'Яндекс Браузер',
+  iphone: 'iPhone 13', pixel: 'Pixel 5',
+};
+var visualResults = {}; // device -> {checks, screenshotUrl, status: 'pending'|'running'|'done'}
+var visualRunning = false;
+
+function renderVisualGrid() {
+  var grid = document.getElementById('visual-grid');
+  if (!grid) return;
+  var devices = ['chromium', 'yandex', 'iphone', 'pixel'];
+
+  grid.innerHTML = devices.map(function(dk) {
+    var r = visualResults[dk];
+    var label = VISUAL_DEVICE_LABELS[dk];
+
+    if (!r) {
+      return '<div class="visual-card">' +
+        '<div class="visual-card-head"><span class="visual-card-title">'+label+'</span><span class="visual-card-status">—</span></div>' +
+        '<div class="visual-shot-wrap"><div class="visual-shot-placeholder">Ожидание</div></div>' +
+      '</div>';
+    }
+
+    var accent = 'var(--faint)';
+    var statusText = '—';
+    if (r.status === 'running') { statusText = 'Проверяется...'; }
+    if (r.status === 'done') {
+      var hasFail = r.checks.some(function(c){ return c.status === 'fail'; });
+      var hasWarn = r.checks.some(function(c){ return c.status === 'warn'; });
+      accent = hasFail ? 'var(--red)' : hasWarn ? 'var(--amber)' : 'var(--green)';
+      var passN = r.checks.filter(function(c){ return c.status === 'pass'; }).length;
+      statusText = passN + '/' + r.checks.length + ' OK';
+    }
+
+    var shotHtml = r.screenshotUrl
+      ? '<img src="'+r.screenshotUrl+'" alt="'+label+'" loading="lazy">'
+      : (r.status === 'running'
+          ? '<div class="visual-shot-placeholder"><div class="visual-spinner"></div>Загрузка...</div>'
+          : '<div class="visual-shot-placeholder">Нет скриншота</div>');
+
+    var checksHtml = (r.checks || []).map(function(c) {
+      var icon = c.status === 'pass' ? '✓' : c.status === 'fail' ? '✗' : '⚠';
+      var color = c.status === 'pass' ? 'var(--green)' : c.status === 'fail' ? 'var(--red)' : 'var(--amber)';
+      return '<div class="visual-check-row">' +
+        '<span class="visual-check-icon" style="color:'+color+'">'+icon+'</span>' +
+        '<span class="visual-check-name">'+c.name+'</span>' +
+        (c.note ? '<span class="visual-check-note" title="'+c.note+'">'+c.note+'</span>' : '') +
+      '</div>';
+    }).join('');
+
+    return '<div class="visual-card" style="border-left-color:'+accent+'">' +
+      '<div class="visual-card-head"><span class="visual-card-title">'+label+'</span><span class="visual-card-status">'+statusText+'</span></div>' +
+      '<div class="visual-shot-wrap" onclick="'+(r.screenshotUrl ? 'window.open(\''+r.screenshotUrl+'\',\'_blank\')' : '')+'">'+shotHtml+'</div>' +
+      '<div class="visual-checks">'+checksHtml+'</div>' +
+    '</div>';
+  }).join('');
+
+  var doneCount = Object.keys(visualResults).filter(function(k){ return visualResults[k].status === 'done'; }).length;
+  var failCount = Object.keys(visualResults).filter(function(k){
+    return visualResults[k].status === 'done' && visualResults[k].checks.some(function(c){ return c.status === 'fail'; });
+  }).length;
+  var ncEl = document.getElementById('nc-visual');
+  if (ncEl) {
+    if (failCount > 0) { ncEl.textContent = failCount; ncEl.className = 'ni-count bad'; ncEl.style.background=''; ncEl.style.color=''; }
+    else if (doneCount > 0) { ncEl.textContent = doneCount; ncEl.className = 'ni-count'; ncEl.style.background='rgba(34,211,163,.15)'; ncEl.style.color='var(--green)'; }
+    else { ncEl.textContent = '0'; ncEl.className = 'ni-count'; ncEl.style.background=''; ncEl.style.color=''; }
+  }
+}
+
+function runVisualCheck() {
+  if (visualRunning) return;
+  var landingUrl = getLandingUrl();
+  if (!landingUrl || landingUrl === 'https://example.com') {
+    alert('Введите URL лендинга в Конфигурации');
+    return;
+  }
+
+  visualRunning = true;
+  visualResults = {};
+  ['chromium','yandex','iphone','pixel'].forEach(function(k){ visualResults[k] = {status:'pending', checks:[], screenshotUrl:null}; });
+  visualResults.chromium.status = 'running';
+  renderVisualGrid();
+
+  var btn = document.getElementById('btn-run-visual');
+  if (btn) { btn.disabled = true; btn.textContent = '▦ Проверяется...'; }
+
+  var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var ws = new WebSocket(wsProtocol + '//' + location.host);
+
+  ws.onopen = function() {
+    fetch('/run-visual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landingUrl: landingUrl }),
+    }).then(function(r){ return r.json(); }).then(function(data) {
+      if (data.error) { alert('Ошибка: ' + data.error); finishVisual(); }
+    }).catch(function(err) { alert('Ошибка соединения: ' + err.message); finishVisual(); });
+  };
+
+  ws.onmessage = function(evt) {
+    var data = JSON.parse(evt.data);
+
+    if (data.type === 'visual_result') {
+      visualResults[data.device] = { status: 'done', checks: data.checks, screenshotUrl: data.screenshotUrl };
+      // помечаем следующее устройство как "running", если оно ещё pending
+      var order = ['chromium','yandex','iphone','pixel'];
+      var idx = order.indexOf(data.device);
+      if (idx >= 0 && idx + 1 < order.length && visualResults[order[idx+1]].status === 'pending') {
+        visualResults[order[idx+1]].status = 'running';
+      }
+      renderVisualGrid();
+    }
+
+    if (data.type === 'visual_done') {
+      finishVisual();
+    }
+
+    if (data.type === 'error') {
+      log('Ошибка проверки вёрстки: ' + data.message, 'err');
+      finishVisual();
+    }
+  };
+
+  ws.onerror = function() {};
+  ws.onclose = function() { if (visualRunning) finishVisual(); };
+
+  function finishVisual() {
+    visualRunning = false;
+    var btn = document.getElementById('btn-run-visual');
+    if (btn) { btn.disabled = false; btn.textContent = '▦ Проверить вёрстку'; }
+    renderVisualGrid();
+    if (ws.readyState === WebSocket.OPEN) ws.close();
+  }
 }
 
 
