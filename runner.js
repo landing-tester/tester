@@ -1051,4 +1051,161 @@ async function runTest(config, emit) {
   ]);
 }
 
-module.exports = { runTest };
+// ── Визуальная проверка вёрстки на нескольких устройствах ──────────────────
+// Лёгкая проверка: без авторизации и оплаты — только загрузка страницы,
+// базовые проверки (H1, CTA видна, картинки не битые) и скриншот.
+// Устройства идут ПОСЛЕДОВАТЕЛЬНО (не параллельно) — экономим память сервера.
+
+const VISUAL_DEVICES = [
+  { key: 'chromium', label: 'Chromium Desktop' },
+  { key: 'yandex',   label: 'Яндекс Браузер' },
+  { key: 'iphone',   label: 'iPhone 13' },
+  { key: 'pixel',    label: 'Pixel 5' },
+];
+
+async function launchForDevice(deviceKey) {
+  if (deviceKey === 'iphone') {
+    const browser = await webkit.launch({ headless: true });
+    const context = await browser.newContext({
+      ...devices['iPhone 13'], deviceScaleFactor: 2, locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+    });
+    return { browser, context };
+  }
+  if (deviceKey === 'pixel') {
+    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+    const context = await browser.newContext({ ...devices['Pixel 5'], locale: 'ru-RU', timezoneId: 'Europe/Moscow' });
+    return { browser, context };
+  }
+  if (deviceKey === 'yandex') {
+    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+    const context = await browser.newContext({
+      locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 YaBrowser/24.6.0.0 Safari/537.36',
+    });
+    return { browser, context };
+  }
+  // chromium (десктоп по умолчанию)
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+  const context = await browser.newContext({
+    locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  });
+  return { browser, context };
+}
+
+async function checkOneDevice(deviceKey, label, landingUrl, emit) {
+  const checks = [];
+  let screenshotUrl = null;
+  let browser = null;
+
+  function pushCheck(name, status, note) {
+    checks.push({ name, status, note });
+  }
+
+  try {
+    const launched = await withTimeout(launchForDevice(deviceKey), 30000);
+    browser = launched.browser;
+    const context = launched.context;
+    const page = await context.newPage();
+
+    try {
+      await withTimeout(page.goto(landingUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }), 25000);
+      await sleep(1500);
+      pushCheck('Открытие лендинга', 'pass');
+    } catch (e) {
+      pushCheck('Открытие лендинга', 'fail', e.message.slice(0, 100));
+      throw e; // без загруженной страницы остальные проверки бессмысленны
+    }
+
+    // H1
+    const h1Els = await page.$$('h1').catch(() => []);
+    let h1Text = '';
+    for (const el of h1Els) {
+      try {
+        const txt = (await el.innerText()).trim();
+        if (txt.length > h1Text.length && !txt.toLowerCase().includes('cookie')) h1Text = txt;
+      } catch (_) {}
+    }
+    if (h1Text) pushCheck('H1 присутствует', 'pass', h1Text.slice(0, 60));
+    else pushCheck('H1 присутствует', 'warn', 'Не найден');
+
+    // CTA видна (используем профиль лендинга, если есть)
+    const profile = findProfile(landingUrl);
+    const ctaSels = (profile && profile.cta) || [
+      'button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")',
+      'button:has-text("Попробовать")', 'button:has-text("Подключить")',
+    ];
+    let ctaVisible = false;
+    for (const s of ctaSels) {
+      try {
+        const el = await page.$(s);
+        if (el && await el.isVisible().catch(() => false)) { ctaVisible = true; break; }
+      } catch (_) {}
+    }
+    pushCheck('CTA кнопка видима', ctaVisible ? 'pass' : 'warn', ctaVisible ? '' : 'Не найдена');
+
+    // Битые картинки
+    const brokenImgs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('img')).filter(img => !img.complete || img.naturalWidth === 0).length
+    ).catch(() => 0);
+    pushCheck('Битые картинки', brokenImgs === 0 ? 'pass' : 'warn', brokenImgs === 0 ? '' : brokenImgs + ' шт.');
+
+    // Meta title
+    const title = await page.title().catch(() => '');
+    pushCheck('Meta title', title ? 'pass' : 'warn', title ? title.slice(0, 50) : 'Пустой');
+
+    // Горизонтальный скролл (частая проблема мобильной вёрстки)
+    const hasHScroll = await page.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth + 5
+    ).catch(() => false);
+    pushCheck('Горизонтальный скролл', hasHScroll ? 'warn' : 'pass', hasHScroll ? 'Есть — возможен баг вёрстки' : '');
+
+    // Скриншот
+    screenshotUrl = await saveDebugShot(page, 'visual-' + deviceKey, emit).catch(() => null);
+
+  } catch (e) {
+    if (!checks.length) pushCheck('Открытие лендинга', 'fail', e.message.slice(0, 100));
+  } finally {
+    if (browser) { try { await browser.close(); } catch (_) {} }
+  }
+
+  return { device: deviceKey, label, checks, screenshotUrl };
+}
+
+async function runVisualCheckInner(config, emit) {
+  const landingUrl = config.landingUrl;
+  emit({ type: 'log', msg: 'Проверка вёрстки на ' + VISUAL_DEVICES.length + ' устройствах: ' + landingUrl, logType: 'info' });
+
+  const allResults = [];
+  for (const d of VISUAL_DEVICES) {
+    emit({ type: 'log', msg: 'Устройство: ' + d.label + '...', logType: 'info' });
+    const result = await checkOneDevice(d.key, d.label, landingUrl, emit);
+    allResults.push(result);
+    emit({ type: 'visual_result', ...result });
+  }
+
+  emit({ type: 'visual_done', results: allResults });
+}
+
+// Обёртка с общим страховочным таймаутом (аналогично основному runTest)
+async function runVisualCheck(config, emit) {
+  const WATCHDOG_MS = 5 * 60 * 1000; // 5 минут на все 4 устройства
+  let watchdogTimer;
+  let finished = false;
+
+  const watchdog = new Promise((resolve) => {
+    watchdogTimer = setTimeout(() => {
+      if (finished) return;
+      emit({ type: 'log', msg: 'Проверка вёрстки превысила ' + (WATCHDOG_MS / 60000) + ' минут — прерываем', logType: 'fail' });
+      emit({ type: 'visual_done', results: [] });
+      resolve();
+    }, WATCHDOG_MS);
+  });
+
+  await Promise.race([
+    runVisualCheckInner(config, emit).finally(() => { finished = true; clearTimeout(watchdogTimer); }),
+    watchdog,
+  ]);
+}
+
+module.exports = { runTest, runVisualCheck };
