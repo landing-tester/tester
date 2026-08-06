@@ -314,7 +314,7 @@ async function doYandexAuth(page, config, profile, results, emit) {
 }
 
 // ── Главная функция ─────────────────────────────────────────────────────────
-async function runTest(config, emit) {
+async function runTestInner(config, emit, browserRef) {
   const results = [];
   const ymGoals = [];
 
@@ -403,6 +403,7 @@ async function runTest(config, emit) {
   }
 
   const page = await context.newPage();
+  browserRef.browser = browser; // чтобы watchdog снаружи мог принудительно закрыть браузер
 
   // Строгий фильтр: реальные события Яндекс.Метрики, а не любой текст со словом "goal"
   // (например, у Яндекс.Паспорта в служебных URL встречается goal=https://..., это не про Метрику)
@@ -1006,6 +1007,34 @@ async function runTest(config, emit) {
     log('Готово. Прошли: ' + pass + ' Упали: ' + fail + ' Предупреждения: ' + warn, fail > 0 ? 'warn' : 'ok');
     emit({ type:'results', results });
   }
+}
+
+// Обёртка со страховочным таймаутом на весь прогон целиком.
+// Если что-то где-то зависнет без ограничения по времени (сеть, зомби-процесс
+// браузера и т.д.) — прогон принудительно завершится сам, а не будет висеть
+// вечно и блокировать сервер для всех следующих тестов.
+async function runTest(config, emit) {
+  const WATCHDOG_MS = 6 * 60 * 1000; // 6 минут на весь прогон
+  const browserRef = { browser: null };
+  let watchdogTimer;
+  let finished = false;
+
+  const watchdog = new Promise((resolve) => {
+    watchdogTimer = setTimeout(async () => {
+      if (finished) return;
+      emit({ type: 'log', msg: 'Прогон превысил ' + (WATCHDOG_MS / 60000) + ' минут — принудительно завершаем', logType: 'fail' });
+      if (browserRef.browser) {
+        try { await browserRef.browser.close(); } catch (_) {}
+      }
+      emit({ type: 'results', results: [{ name: 'Критическая ошибка', status: 'fail', note: 'Таймаут прогона (' + (WATCHDOG_MS / 60000) + ' мин)' }] });
+      resolve();
+    }, WATCHDOG_MS);
+  });
+
+  await Promise.race([
+    runTestInner(config, emit, browserRef).finally(() => { finished = true; clearTimeout(watchdogTimer); }),
+    watchdog,
+  ]);
 }
 
 module.exports = { runTest };
