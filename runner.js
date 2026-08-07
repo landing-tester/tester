@@ -868,37 +868,48 @@ async function runTestInner(config, emit, browserRef) {
               });
 
               if (smsCode) {
-                // ищем поле для SMS в нескольких местах
-                let smsField = null;
-                let smsFrame = activePage;
-                for (let si = 0; si < 10; si++) {
-                  smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
-                  if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
-                  smsField = null;
+                // Ищем поле для ввода кода. ВАЖНО: сначала пробуем именно тот фрейм
+                // банка, что уже нашли на этапе ожидания (внешняя переменная smsFrame) —
+                // раньше эта информация терялась из-за одноимённой переменной ниже.
+                const otpSel = 'input[data-qa="otp-input"], #otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]';
+                let fillField = null;
+                let fillFrame = activePage;
+
+                if (smsFrame && smsFrame !== activePage) {
+                  fillField = await withTimeout(smsFrame.$(otpSel), 2000).catch(() => null);
+                  if (fillField) fillFrame = smsFrame;
+                }
+
+                for (let si = 0; si < 10 && !fillField; si++) {
+                  fillField = await activePage.$(otpSel).catch(() => null);
+                  if (fillField && await fillField.isVisible().catch(() => false)) { fillFrame = activePage; break; }
+                  fillField = null;
                   const sf = await findInput(trustFrame, ['input[data-qa="otp-input"]', 'input[maxlength="6"]', 'input[maxlength="4"]', 'input[placeholder*="код"]']);
-                  if (sf) { smsField = sf; smsFrame = trustFrame; break; }
+                  if (sf) { fillField = sf; fillFrame = trustFrame; break; }
                   for (const f of activePage.frames()) {
-                    if (f.url().includes('payment-widget')) {
-                      const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], input[maxlength="6"], input[maxlength="4"], input[placeholder*="код" i]'), 2000).catch(() => null);
-                      if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
+                    const furl = f.url();
+                    if (furl.includes('payment-widget') || furl.includes('secure.tbank.ru') ||
+                        furl.includes('3dsec') || (furl.includes('acs/') && furl.includes('challenge'))) {
+                      const sf2 = await withTimeout(f.$(otpSel), 2000).catch(() => null);
+                      if (sf2 && await sf2.isVisible().catch(() => false)) { fillField = sf2; fillFrame = f; break; }
                     }
                   }
-                  if (smsField) break;
+                  if (fillField) break;
                   await sleep(500);
                 }
 
-                if (smsField) {
-                  await smsField.click({ force: true }); await sleep(200);
-                  await smsField.type(smsCode, { delay: 80 });
+                if (fillField) {
+                  await fillField.click({ force: true }); await sleep(200);
+                  await fillField.type(smsCode, { delay: 80 });
                   log('SMS-код введён в поле', 'ok');
                   await sleep(500);
-                  await smsField.press('Enter');
-                } else if (smsFrame && smsFrame !== activePage) {
+                  await fillField.press('Enter');
+                } else if (fillFrame && fillFrame !== activePage) {
                   // 3DS фрейм — фокусируем и вводим через keyboard
                   log('Вводим код в 3DS фрейм банка...', 'info');
                   try {
                     // пробуем найти любой input в фрейме
-                    const anyInput = await smsFrame.$('input').catch(() => null);
+                    const anyInput = await fillFrame.$('input').catch(() => null);
                     if (anyInput) {
                       await anyInput.click({ force: true }); await sleep(200);
                       await anyInput.type(smsCode, { delay: 80 });
