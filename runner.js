@@ -1123,10 +1123,25 @@ async function checkOneDevice(deviceKey, label, landingUrl, emit) {
     try {
       const popupResult = await withTimeout(handlePopup(page, profile, emit), 10000);
       if (popupResult === 'auth_required') {
-        // Поп-ап без крестика — сам является формой входа. Пробуем найти
-        // и убрать его иначе: жмём Escape или кликаем мимо (по фону)
+        // Поп-ап без крестика — сам является формой входа, стандартного
+        // способа закрыть нет. Пробуем по очереди несколько приёмов:
         await page.keyboard.press('Escape').catch(() => {});
-        await sleep(500);
+        await sleep(400);
+
+        // 1) Ищем сам оверлей по типичным именам классов и кликаем по нему
+        //    в точке ЗА ПРЕДЕЛАМИ самой карточки модалки (обычно верх/низ экрана)
+        const overlaySel = '[class*="overlay" i], [class*="backdrop" i], [class*="modal-bg" i], [class*="modal__bg" i], [role="dialog"]';
+        const overlay = await page.$(overlaySel).catch(() => null);
+        if (overlay) {
+          const vp = page.viewportSize() || { width: 400, height: 800 };
+          // кликаем в самом верху экрана — там обычно только фон, а не сама карточка
+          await page.mouse.click(vp.width / 2, 15).catch(() => {});
+          await sleep(400);
+        }
+
+        // 2) Если не помогло — просто кликаем в угол страницы (за пределами модалки)
+        await page.mouse.click(5, 5).catch(() => {});
+        await sleep(400);
       }
     } catch (_) {}
 
