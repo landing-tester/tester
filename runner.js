@@ -903,7 +903,12 @@ async function runTestInner(config, emit, browserRef) {
                   await fillField.type(smsCode, { delay: 80 });
                   log('SMS-код введён в поле', 'ok');
                   await sleep(500);
-                  await fillField.press('Enter');
+                  // Форма банка может автоматически отправиться сразу после ввода
+                  // нужного количества цифр — тогда фрейм уходит в переход/detach
+                  // до нашего Enter, и это нормально, не ошибка
+                  await fillField.press('Enter').catch((e) => {
+                    log('Форма, похоже, уже отправилась сама (' + e.message.slice(0,60) + ')', 'info');
+                  });
                 } else if (fillFrame && fillFrame !== activePage) {
                   // 3DS фрейм — фокусируем и вводим через keyboard
                   log('Вводим код в 3DS фрейм банка...', 'info');
