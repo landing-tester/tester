@@ -836,7 +836,7 @@ async function runTestInner(config, emit, browserRef) {
                   }
                   // ищем поле напрямую
                   try {
-                    const sf2 = await withTimeout(f.$('#otp-container input, input[maxlength="6"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
+                    const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
                     if (sf2 && await sf2.isVisible().catch(() => false)) {
                       smsField = sf2; smsFrame = f;
                       log('SMS-поле: ' + furl.slice(0, 80), 'ok');
@@ -846,7 +846,7 @@ async function runTestInner(config, emit, browserRef) {
                 }
                 if (smsField || has3ds) break;
                 // страница напрямую
-                smsField = await activePage.$('#otp-container input, input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
                 if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
                 smsField = null;
                 await sleep(1000);
@@ -872,14 +872,14 @@ async function runTestInner(config, emit, browserRef) {
                 let smsField = null;
                 let smsFrame = activePage;
                 for (let si = 0; si < 10; si++) {
-                  smsField = await activePage.$('#otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[autocomplete="one-time-code"]').catch(() => null);
+                  smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
                   if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
                   smsField = null;
-                  const sf = await findInput(trustFrame, ['input[maxlength="6"]', 'input[placeholder*="код"]']);
+                  const sf = await findInput(trustFrame, ['input[data-qa="otp-input"]', 'input[maxlength="6"]', 'input[maxlength="4"]', 'input[placeholder*="код"]']);
                   if (sf) { smsField = sf; smsFrame = trustFrame; break; }
                   for (const f of activePage.frames()) {
                     if (f.url().includes('payment-widget')) {
-                      const sf2 = await withTimeout(f.$('input[maxlength="6"], input[placeholder*="код" i]'), 2000).catch(() => null);
+                      const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], input[maxlength="6"], input[maxlength="4"], input[placeholder*="код" i]'), 2000).catch(() => null);
                       if (sf2 && await sf2.isVisible().catch(() => false)) { smsField = sf2; smsFrame = f; break; }
                     }
                   }
