@@ -797,7 +797,7 @@ async function runTestInner(config, emit, browserRef) {
         // во вложенном дочернем фрейме с другим доменом (например, у payment-widget.plus.yandex.ru).
         // Поэтому ищем поле номера карты по ВСЕМ фреймам страницы, а не только в trustFrame.
         let cardFrame = null;
-        for (let ci = 0; ci < 22; ci++) {
+        for (let ci = 0; ci < 40; ci++) {
           for (const f of activePage.frames()) {
             const el = await withTimeout(f.$('input#regular-card-number-input'), 2000).catch(() => null);
             if (el) { cardFrame = f; break; }
@@ -811,6 +811,9 @@ async function runTestInner(config, emit, browserRef) {
         }
         if (!cardFrame) {
           log('Поле карты не появилось ни в одном фрейме', 'warn');
+          const frameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
+          log('Фреймы на момент неудачи: ' + (frameUrls.length ? frameUrls.slice(0,8).join(' | ').slice(0,400) : 'нет'), 'warn');
+          await saveDebugShot(activePage, 'cardframe-not-found', emit);
           cardFrame = trustFrame; // на всякий случай пробуем как раньше
         }
 
@@ -819,7 +822,10 @@ async function runTestInner(config, emit, browserRef) {
           await numEl.click({ force: true }); await sleep(200);
           await numEl.fill(cardNum);
           log('Номер карты введён', 'ok'); await sleep(300);
-        } else { log('Поле номера карты не найдено', 'warn'); }
+        } else {
+          log('Поле номера карты не найдено', 'fail');
+          result('Ввод номера карты', 'fail', 'Поле не найдено — тариф не будет оформлен');
+        }
 
         const expMonthEl = await cardFrame.$('input#regular-card-month-input');
         if (expMonthEl) {
@@ -1058,12 +1064,12 @@ async function runTestInner(config, emit, browserRef) {
 
           } else {
             log('Кнопка «Подключить» не найдена', 'warn');
-            result('Оплата', 'warn', 'Кнопка не найдена');
+            result('Оплата', 'fail', 'Кнопка не найдена — тариф не оформлен');
           }
       } else {
         log('Виджет не найден', 'warn');
         await saveDebugShot(activePage, 'widget-not-found', emit);
-        result('Виджет открылся', 'warn', 'Не отображается');
+        result('Виджет открылся', 'fail', 'Не отображается — тариф не оформлен');
       }
     }
 
