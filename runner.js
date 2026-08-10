@@ -824,6 +824,25 @@ async function runTestInner(config, emit, browserRef) {
 
         await sleep(1000);
 
+        // Универсальная проверка: если внутри самого виджета есть экран
+        // активации промокода (например "Активировать" с уже подставленным кодом,
+        // это встречается и у Кинопоиска, и у Музыки при promocode= в URL) —
+        // сначала жмём её, и только потом ищем форму карты
+        const promoActivateSel = '[data-testid="submit-button"], button:has-text("Активировать")';
+        let promoBtn = null;
+        for (let pi = 0; pi < 5 && !promoBtn; pi++) {
+          for (const f of activePage.frames()) {
+            const el = await withTimeout(f.$(promoActivateSel), 1500).catch(() => null);
+            if (el && await el.isVisible().catch(() => false)) { promoBtn = el; break; }
+          }
+          if (!promoBtn) await sleep(500);
+        }
+        if (promoBtn) {
+          log('Найден экран активации промокода внутри виджета — жмём «Активировать»', 'ok');
+          await promoBtn.click({ force: true }).catch(() => {});
+          await sleep(2500);
+        }
+
         // Ввод карты — используем точные ID как в рабочем test.js
         const cardNum = config.card.number.replace(/\s/g, '');
         const cardExpiry = config.card.expiry || '12/27';
@@ -976,7 +995,7 @@ async function runTestInner(config, emit, browserRef) {
                   if (fillField) fillFrame = smsFrame;
                 }
 
-                for (let si = 0; si < 10 && !fillField; si++) {
+                for (let si = 0; si < 30 && !fillField; si++) {
                   fillField = await activePage.$(otpSel).catch(() => null);
                   if (fillField && await fillField.isVisible().catch(() => false)) { fillFrame = activePage; break; }
                   fillField = null;
@@ -991,7 +1010,7 @@ async function runTestInner(config, emit, browserRef) {
                     }
                   }
                   if (fillField) break;
-                  await sleep(500);
+                  await sleep(1000);
                 }
 
                 if (fillField) {
