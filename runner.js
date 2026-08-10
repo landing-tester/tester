@@ -686,10 +686,10 @@ async function runTestInner(config, emit, browserRef) {
       let activePage = page;
 
       if (profile && profile.giftLanding) {
-        // Гифт/промокод-лендинги (например "Кинопоиск Гифт") — карта не нужна,
-        // промокод уже подставлен в поле, просто жмём "Активировать".
-        // Кнопка может быть во вложенном фрейме (тот же React-виджет, что и форма карты) —
-        // ищем и на самой странице, и по всем фреймам.
+        // Гифт/промокод-лендинги (например "Кинопоиск Гифт") — сначала жмём
+        // "Активировать" (промокод уже подставлен в поле), а ДАЛЬШЕ всё равно
+        // появляется обычная форма подключения карты — она обрабатывается
+        // ниже той же логикой, что и у остальных лендингов, не отдельной веткой.
         log('Гифт-лендинг: ищем кнопку активации промокода', 'info');
         const activateSels = (profile && profile.cta) || ['button:has-text("Активировать")'];
         const activateSelJoined = activateSels.join(', ');
@@ -710,9 +710,7 @@ async function runTestInner(config, emit, browserRef) {
         if (activateBtn) {
           await activateBtn.click({ force: true }).catch(() => {});
           log('Клик «Активировать»', 'ok');
-          result('Виджет открылся', 'pass', 'Гифт-лендинг');
           await sleep(2500);
-          result('Оплата', 'pass', 'Промокод активирован');
         } else {
           log('Кнопка «Активировать» не найдена', 'warn');
           const frameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
@@ -720,7 +718,9 @@ async function runTestInner(config, emit, browserRef) {
           await saveDebugShot(activePage, 'activate-button-not-found', emit);
           result('Виджет открылся', 'fail', 'Кнопка «Активировать» не найдена');
         }
-      } else {
+      }
+
+      if (!(profile && profile.giftLanding)) {
 
       // После авторизации кликаем CTA снова чтобы открыть виджет
       const ctaSels2 = (profile && profile.cta) || [
@@ -765,6 +765,8 @@ async function runTestInner(config, emit, browserRef) {
           }
         } catch (_) {}
       }
+
+      } // конец блока if (!giftLanding) — дальше общая логика для всех типов лендингов
 
       // Кнопка «Добавить карту»
       const addCardBtn = await activePage.$('[data-testid="payment-method-button~new-card"], button:has-text("Добавить карту")').catch(() => null);
@@ -1108,8 +1110,6 @@ async function runTestInner(config, emit, browserRef) {
         await saveDebugShot(activePage, 'widget-not-found', emit);
         result('Виджет открылся', 'fail', 'Не отображается — тариф не оформлен');
       }
-
-      } // конец блока else (обычная логика карты, не гифт-лендинг)
     }
 
     // ── БЛОК 5: Цели Метрики ───────────────────────────────────────────────
