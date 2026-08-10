@@ -687,14 +687,23 @@ async function runTestInner(config, emit, browserRef) {
 
       if (profile && profile.giftLanding) {
         // Гифт/промокод-лендинги (например "Кинопоиск Гифт") — карта не нужна,
-        // промокод уже подставлен в поле, просто жмём "Активировать"
+        // промокод уже подставлен в поле, просто жмём "Активировать".
+        // Кнопка может быть во вложенном фрейме (тот же React-виджет, что и форма карты) —
+        // ищем и на самой странице, и по всем фреймам.
         log('Гифт-лендинг: ищем кнопку активации промокода', 'info');
         const activateSels = (profile && profile.cta) || ['button:has-text("Активировать")'];
+        const activateSelJoined = activateSels.join(', ');
         let activateBtn = null;
-        for (let i = 0; i < 20 && !activateBtn; i++) {
+        for (let i = 0; i < 25 && !activateBtn; i++) {
           for (const s of activateSels) {
             const el = await activePage.$(s).catch(() => null);
             if (el && await el.isVisible().catch(() => false)) { activateBtn = el; break; }
+          }
+          if (!activateBtn) {
+            for (const f of activePage.frames()) {
+              const el2 = await withTimeout(f.$(activateSelJoined), 2000).catch(() => null);
+              if (el2 && await el2.isVisible().catch(() => false)) { activateBtn = el2; break; }
+            }
           }
           if (!activateBtn) await sleep(1000);
         }
@@ -706,6 +715,8 @@ async function runTestInner(config, emit, browserRef) {
           result('Оплата', 'pass', 'Промокод активирован');
         } else {
           log('Кнопка «Активировать» не найдена', 'warn');
+          const frameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
+          log('Фреймы на момент неудачи: ' + (frameUrls.length ? frameUrls.slice(0,8).join(' | ').slice(0,400) : 'нет'), 'warn');
           await saveDebugShot(activePage, 'activate-button-not-found', emit);
           result('Виджет открылся', 'fail', 'Кнопка «Активировать» не найдена');
         }
