@@ -685,6 +685,32 @@ async function runTestInner(config, emit, browserRef) {
       // именно в этой новой странице, а не в исходной.
       let activePage = page;
 
+      if (profile && profile.giftLanding) {
+        // Гифт/промокод-лендинги (например "Кинопоиск Гифт") — карта не нужна,
+        // промокод уже подставлен в поле, просто жмём "Активировать"
+        log('Гифт-лендинг: ищем кнопку активации промокода', 'info');
+        const activateSels = (profile && profile.cta) || ['button:has-text("Активировать")'];
+        let activateBtn = null;
+        for (let i = 0; i < 20 && !activateBtn; i++) {
+          for (const s of activateSels) {
+            const el = await activePage.$(s).catch(() => null);
+            if (el && await el.isVisible().catch(() => false)) { activateBtn = el; break; }
+          }
+          if (!activateBtn) await sleep(1000);
+        }
+        if (activateBtn) {
+          await activateBtn.click({ force: true }).catch(() => {});
+          log('Клик «Активировать»', 'ok');
+          result('Виджет открылся', 'pass', 'Гифт-лендинг');
+          await sleep(2500);
+          result('Оплата', 'pass', 'Промокод активирован');
+        } else {
+          log('Кнопка «Активировать» не найдена', 'warn');
+          await saveDebugShot(activePage, 'activate-button-not-found', emit);
+          result('Виджет открылся', 'fail', 'Кнопка «Активировать» не найдена');
+        }
+      } else {
+
       // После авторизации кликаем CTA снова чтобы открыть виджет
       const ctaSels2 = (profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
@@ -1071,6 +1097,8 @@ async function runTestInner(config, emit, browserRef) {
         await saveDebugShot(activePage, 'widget-not-found', emit);
         result('Виджет открылся', 'fail', 'Не отображается — тариф не оформлен');
       }
+
+      } // конец блока else (обычная логика карты, не гифт-лендинг)
     }
 
     // ── БЛОК 5: Цели Метрики ───────────────────────────────────────────────
