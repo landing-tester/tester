@@ -1118,6 +1118,19 @@ async function runTestInner(config, emit, browserRef) {
               result('Подписка оформлена', 'pass');
             } else {
               log('Кнопка «Не сейчас» не найдена', 'warn');
+              // Если вместо кнопки пропуска сайт снова просит карту — значит,
+              // на опции не привязан одноклик, и нужно повторно подтверждать картой
+              let cardAskedAgain = await activePage.$('input#regular-card-number-input').catch(() => null);
+              if (!cardAskedAgain) {
+                for (const f of activePage.frames()) {
+                  const el = await withTimeout(f.$('input#regular-card-number-input'), 2000).catch(() => null);
+                  if (el && await el.isVisible().catch(() => false)) { cardAskedAgain = el; break; }
+                }
+              }
+              if (cardAskedAgain) {
+                log('На опции запросили карту повторно — одноклик недоступен', 'warn');
+                result('Одноклик на опции', 'fail', 'Запрошена повторная карта');
+              }
             }
 
           } else {
