@@ -1,1305 +1,1835 @@
-// runner.js — серверная версия test.js для работы через WebSocket
-// Поддерживает десктоп (Chromium) и мобильный (iPhone) режим
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cmVjdCB4PSIyIiB5PSIyIiB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHJ4PSIxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjN2M2YWZmIiBzdHJva2Utd2lkdGg9IjQiLz4KICA8dGV4dCB4PSI1MCIgeT0iNjgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJGaXJhIENvZGUsIG1vbm9zcGFjZSIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSIzNiIgZmlsbD0iIzdjNmFmZiI+TFQ8L3RleHQ+Cjwvc3ZnPg==">
+<title>LandingTester</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0c0f;--bg2:#121217;--bg3:#1a1a22;--bg4:#22222e;--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.12);--text:#e8e8f0;--muted:#6b6b80;--faint:#3a3a4a;--accent:#7c6aff;--green:#22d3a3;--red:#ff5757;--amber:#f59e0b;--blue:#60a5fa;--font-head:'Fira Code',monospace;--font-mono:'Fira Code',monospace;--r:10px;--r2:6px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:14px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(124,106,255,.03)1px,transparent 1px),linear-gradient(90deg,rgba(124,106,255,.03)1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.shell{display:grid;grid-template-columns:52px 1fr;grid-template-rows:52px 1fr;min-height:100vh;position:relative;z-index:1}
 
-const { chromium, webkit, devices } = require('playwright');
-const fs = require('fs');
-const path = require('path');
+/* TOPBAR */
+.topbar{grid-column:1/-1;display:flex;align-items:center;border-bottom:1px solid var(--line);background:rgba(12,12,15,.96);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;height:52px}
+.topbar-brand{display:flex;align-items:center;justify-content:center;gap:0;padding:0;width:52px;border-right:1px solid var(--line);height:100%;flex-shrink:0}
+.brand-icon{width:28px;height:28px;background:transparent;border:1px solid var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--accent);font-family:var(--font-head);font-weight:800}
+.brand-name{font-family:var(--font-head);font-weight:700;font-size:15px}
+.brand-tag{font-size:10px;color:var(--muted)}
+.topbar-mid{flex:1;display:flex;align-items:center;padding:0 16px;gap:6px;min-width:0}
+.breadcrumb-page{font-size:12px;color:var(--muted);white-space:nowrap}
+.breadcrumb-sep{font-size:12px;color:var(--faint)}
+.url-display{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.kbd-hint{display:inline-flex;align-items:center;padding:1px 6px;background:var(--bg3);border:1px solid var(--line2);border-radius:3px;font-size:10px;color:var(--faint);font-family:var(--font-mono)}
+.topbar-actions{display:flex;align-items:center;gap:8px;padding:0 16px;flex-shrink:0}
+.run-status{display:none;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.run-status.active{display:flex}
+.dot-spin{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:32px;border-radius:var(--r2);font-family:var(--font-mono);font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap;border:none}
+.btn-ghost{background:transparent;border:1px solid var(--line2);color:var(--muted)}
+.btn-ghost:hover{background:var(--bg3);color:var(--text);border-color:var(--faint)}
+.btn-primary{background:var(--accent);color:#fff;font-weight:500}
+.btn-primary:hover{background:#9070ff}
+.btn-primary:active{transform:scale(.97)}
+.btn-primary:disabled{background:var(--faint);color:var(--muted);cursor:not-allowed}
 
-let selectorRegistry = [];
-try { selectorRegistry = require('./selectors.js'); } catch (_) {}
+/* SIDEBAR */
+.sidebar{border-right:1px solid var(--line);padding:12px 0;background:var(--bg);display:flex;flex-direction:column;gap:2px;overflow:visible;width:52px;position:relative;z-index:200}
+.nav-section{display:none}
+.nav-item{position:relative;display:flex;align-items:center;justify-content:center;width:52px;height:40px;cursor:pointer;transition:all .15s;border-left:2px solid transparent;flex-shrink:0}
+.nav-item:hover{background:var(--bg3)}
+.nav-item.active{background:rgba(124,106,255,.08);border-left-color:var(--accent)}
+.ni-icon{font-size:16px;color:var(--muted);transition:color .15s;line-height:1}
+.nav-item.active .ni-icon{color:var(--accent)}
+.nav-item:hover .ni-icon{color:var(--text)}
+.ni-label{position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r2);padding:5px 12px;font-size:12px;color:var(--text);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;font-family:var(--font-mono);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.nav-item:hover .ni-label{opacity:1}
+.ni-count{position:absolute;top:6px;right:6px;font-size:9px;background:var(--bg4);color:var(--muted);padding:1px 4px;border-radius:20px;min-width:14px;text-align:center}
+.ni-count.bad{background:rgba(255,87,87,.15);color:var(--red)}
+.sidebar-divider{width:28px;height:1px;background:var(--line);margin:6px 12px}
+.sidebar-bottom{margin-top:auto;padding:10px 0;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px}
+.sidebar-bottom strong{color:var(--text);font-weight:500}
 
-const debugDir = path.join(__dirname, 'public', 'debug');
-try { fs.mkdirSync(debugDir, { recursive: true }); } catch (_) {}
+/* MAIN */
+.main{overflow-y:auto;background:var(--bg)}
+.page{display:none;padding:28px;flex-direction:column;gap:20px}
+.page.active{display:flex}
+.page.active>*{animation:fadeUp .25s ease both}
+.page.active>*:nth-child(1){animation-delay:.03s}
+.page.active>*:nth-child(2){animation-delay:.07s}
+.page.active>*:nth-child(3){animation-delay:.11s}
+.page.active>*:nth-child(4){animation-delay:.15s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
-// Сохраняет скриншот в public/debug/ и возвращает публичный URL для просмотра в браузере
-async function saveDebugShot(pageOrFrame, name, emit) {
-  try {
-    const targetPage = pageOrFrame.screenshot ? pageOrFrame : null;
-    if (!targetPage) return null;
-    const fname = name + '-' + Date.now() + '.png';
-    await targetPage.screenshot({ path: path.join(debugDir, fname) });
-    const url = '/debug/' + fname;
-    if (emit) emit({ type: 'log', msg: 'Скриншот: ' + url, logType: 'info' });
-    return url;
-  } catch (_) { return null; }
+/* STATS */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stat-card{background:var(--bg2);border:1px solid var(--line);border-top:2px solid var(--card-accent,var(--faint));border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden}
+.sc-label{font-size:11px;color:var(--muted);margin-bottom:6px}
+.sc-val{font-family:'Fira Code',monospace;font-size:28px;font-weight:700;line-height:1;color:var(--card-color,var(--text))}
+.sc-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.stat-green{--card-accent:var(--green);--card-color:var(--green)}
+.stat-red{--card-accent:var(--red);--card-color:var(--red)}
+.stat-amber{--card-accent:var(--amber);--card-color:var(--amber)}
+.stat-blue{--card-accent:var(--blue);--card-color:var(--blue)}
+
+/* CARD */
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.card-head h3{font-family:var(--font-head);font-size:13px;font-weight:600;letter-spacing:.01em}
+.card-body{padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+
+/* PROGRESS */
+.main-progress{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+.main-prog-bar{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.main-prog-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s ease;position:relative;overflow:hidden}
+.main-prog-fill.running::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,.1) 25%, rgba(255,255,255,.4) 50%, rgba(255,255,255,.1) 75%, transparent 100%);background-size:200% 100%;animation:gradientflow 2.8s ease-in-out infinite}
+.main-prog-fill.done-ok{background:var(--green)}
+.main-prog-fill.done-warn{background:var(--amber)}
+.main-prog-fill.done-fail{background:var(--red)}
+.chip-ok{background:rgba(34,211,163,.15);color:var(--green)}
+.chip-warn{background:rgba(245,158,11,.15);color:var(--amber)}
+.chip-fail{background:rgba(255,87,87,.15);color:var(--red)}
+@keyframes gradientflow{0%{background-position:0% 0}100%{background-position:200% 0}}
+.main-prog-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.prog-suite-row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3);border-radius:var(--r2);font-size:12px;border:1px solid transparent;transition:background .2s}
+.prog-suite-row.running{background:rgba(124,106,255,.08);border-color:rgba(124,106,255,.2)}
+.prog-name{flex:1;color:var(--text)}
+.prog-count{color:var(--muted);font-size:11px;min-width:44px;text-align:right}
+.prog-bar-wrap{height:2px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-bottom:4px}
+.prog-bar-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s ease}
+.scanner-wrap{position:relative;overflow:hidden}
+.scanner-line{position:absolute;top:0;bottom:0;width:16%;background:linear-gradient(90deg,transparent,var(--accent));opacity:0;pointer-events:none}
+.scanner-line.active{opacity:.8;animation:cometmove 1.6s linear infinite}
+@keyframes cometmove{0%{left:-16%}100%{left:100%}}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:3px;font-family:'Fira Code',monospace;letter-spacing:.02em;white-space:nowrap}
+.badge-pass{background:rgba(34,211,163,.12);color:var(--green)}
+.badge-fail{background:rgba(255,87,87,.12);color:var(--red)}
+.badge-run{background:rgba(124,106,255,.15);color:#a89dff}
+.badge-idle{background:var(--bg4);color:var(--muted)}
+.badge-skip{background:var(--bg4);color:var(--muted)}
+.badge-warn{background:rgba(245,158,11,.12);color:var(--amber)}
+.chip{display:inline-flex;align-items:center;font-size:10px;padding:2px 8px;border-radius:20px;background:var(--bg4);color:var(--muted);font-family:'Fira Code',monospace;font-weight:500}
+
+/* RESULTS */
+.test-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r2);font-size:12px;transition:background .1s}
+.test-row:hover{background:var(--bg3)}
+.tr-name{flex:1;color:var(--text)}
+.tr-browser{font-size:11px;color:var(--muted);min-width:70px}
+.tr-dur{font-size:11px;color:var(--muted);min-width:44px;text-align:right}
+.suite-label{font-size:10px;font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;font-family:var(--font-mono);position:sticky;top:0;background:var(--bg2);z-index:10;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);margin-bottom:4px}
+
+.results-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.results-filters{display:flex;gap:6px;flex-wrap:wrap}
+.rf-btn{font-family:var(--font-mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.rf-btn:hover{background:var(--bg3);color:var(--text)}
+.rf-btn.rf-active{background:var(--accent);border-color:var(--accent);color:#fff}
+.results-cards{display:flex;flex-direction:column;gap:12px}
+.result-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--faint);border-radius:var(--r);overflow:hidden}
+.result-card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:6px}
+.rc-title{font-size:12px;font-weight:600;font-family:var(--font-head)}
+.rc-counts{display:flex;gap:10px;font-size:10px;font-family:var(--font-mono)}
+.result-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.result-table th{text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 16px;cursor:pointer;user-select:none;border-bottom:1px solid var(--line);white-space:nowrap;transition:color .15s}
+.result-table th:hover{color:var(--text)}
+.result-table td{padding:9px 16px;font-size:12px;border-bottom:1px solid var(--line);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result-table tr:last-child td{border-bottom:none}
+.result-table tbody tr:hover td{background:var(--bg3)}
+.result-table tbody tr.rt-fail{background:rgba(255,87,87,.06)}
+.result-table tbody tr.rt-fail:hover td{background:rgba(255,87,87,.12)}
+.result-table tbody tr.rt-warn{background:rgba(245,158,11,.06)}
+.result-table tbody tr.rt-warn:hover td{background:rgba(245,158,11,.12)}
+.result-table tbody tr.rt-pass:hover td{background:var(--bg3)}
+.results-empty{padding:44px 0;text-align:center}
+.results-empty-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+
+/* CONFIG */
+.config-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cfg-field{display:flex;flex-direction:column;gap:6px}
+.cfg-field label{font-size:11px;color:var(--muted);font-family:var(--font-head);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.cfg-field input,.cfg-field select{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r2);padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none;transition:border-color .2s;width:100%}
+.cfg-field input:focus,.cfg-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,106,255,.15)}
+.cfg-field select option{background:var(--bg3)}
+.toggle-list{display:flex;flex-direction:column}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
+.toggle-row:last-child{border-bottom:none}
+.tr-info{display:flex;flex-direction:column;gap:2px}
+.tr-info strong{font-size:13px;color:var(--text);font-weight:400;font-family:var(--font-mono)}
+.tr-info small{font-size:11px;color:var(--muted)}
+.switch{position:relative;width:36px;height:20px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.sw-track{position:absolute;inset:0;background:var(--bg4);border:1px solid var(--line2);border-radius:10px;cursor:pointer;transition:.2s}
+.switch input:checked+.sw-track{background:var(--accent);border-color:var(--accent)}
+.sw-track::after{content:'';position:absolute;width:14px;height:14px;top:2px;left:2px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+.sw-track::after{transform:translateX(16px)}
+
+/* CHECKLIST */
+.cl-cat{font-size:10px;font-weight:600;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;padding:10px 0 4px;font-family:var(--font-head)}
+.cl-group{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.cl-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r2);font-size:12px;background:var(--bg3);border:1px solid var(--line);transition:background .1s}
+.cl-item:hover{background:var(--bg4)}
+.cl-dot{width:16px;height:16px;border:1px solid var(--faint);border-radius:3px;flex-shrink:0;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.cl-dot.pass{background:var(--accent);border-color:var(--accent);color:#fff}
+.cl-dot.fail{background:rgba(255,87,87,.2);border-color:var(--red);color:var(--red)}
+.cl-text{flex:1;color:var(--text);line-height:1.5}
+.cl-auto{font-size:10px;color:var(--accent);margin-left:4px}
+.cl-note{background:transparent;border:none;border-bottom:1px solid var(--faint);color:var(--muted);font-family:var(--font-mono);font-size:11px;outline:none;width:130px;padding:1px 4px;transition:all .2s}
+.cl-note:focus{border-color:var(--accent);color:var(--text)}
+.cl-btns{display:flex;gap:5px;flex-shrink:0}
+.cl-btn{font-size:10px;padding:2px 7px;border-radius:4px;border:none;cursor:pointer;font-family:var(--font-head);font-weight:600}
+.cl-ok{background:rgba(34,211,163,.12);color:var(--green)}
+.cl-ok:hover{background:rgba(34,211,163,.25)}
+.cl-ng{background:rgba(255,87,87,.12);color:var(--red)}
+.cl-ng:hover{background:rgba(255,87,87,.25)}
+.cl-summary{display:flex;gap:8px;align-items:center;padding:10px 0 0;border-top:1px solid var(--line);margin-top:4px}
+
+/* GOALS */
+.goals-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.goal-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid transparent;border-radius:12px;padding:16px 18px;transition:border-color .2s}
+.goal-card-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.goal-card-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.goal-card-icon svg{width:18px;height:18px}
+.goal-card-icon img{width:20px;height:20px;object-fit:contain}
+.goal-card-icon-fallback{display:none;align-items:center;justify-content:center;width:100%;height:100%}
+.goal-card-info{flex:1;min-width:0}
+.goal-card-name{font-size:13px;font-weight:600;font-family:var(--font-head)}
+.goal-card-sub{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.goal-ring{width:38px;height:38px;border-radius:50%;position:relative;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background 1s ease}
+.goal-ring::before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--bg2)}
+.goal-ring-val{position:relative;z-index:1;font-size:10px;font-weight:700;font-family:var(--font-mono)}
+.goal-list{display:flex;flex-direction:column}
+.goal-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.goal-item:first-child{border-top:none}
+.goal-item-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;font-weight:700;transition:all .15s}
+.goal-item-icon.pass{background:rgba(34,211,163,.15);color:var(--green)}
+.goal-item-icon.fail{background:rgba(255,87,87,.15);color:var(--red)}
+.goal-item-icon.idle{background:var(--bg4);color:var(--faint)}
+.goal-item-label{flex:1;font-size:12px;color:var(--text)}
+.goal-item-id{font-size:10px;color:var(--faint);font-family:var(--font-mono);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* VISUAL CHECK */
+.visual-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.visual-card{background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--faint);border-radius:12px;overflow:hidden;transition:border-color .2s}
+.visual-card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.visual-card-title{font-size:12px;font-weight:600;font-family:var(--font-head)}
+.visual-card-status{font-size:10px;color:var(--muted)}
+.visual-shot-wrap{position:relative;background:var(--bg);height:280px;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;cursor:pointer}
+.visual-shot-wrap img{width:100%;height:auto;display:block}
+.visual-shot-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--faint);font-size:11px;gap:6px}
+.visual-spinner{width:20px;height:20px;border:2px solid var(--faint);border-top-color:var(--accent);border-radius:50%;animation:visualspin .8s linear infinite}
+@keyframes visualspin{to{transform:rotate(360deg)}}
+.visual-checks{padding:10px 14px;display:flex;flex-direction:column;gap:5px}
+.visual-check-row{display:flex;align-items:center;gap:8px;font-size:11px}
+.visual-check-icon{width:14px;flex-shrink:0;text-align:center}
+.visual-check-name{flex:1;color:var(--text)}
+.visual-check-note{color:var(--faint);font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* LOG */
+.log-area{background:var(--bg);padding:14px;font-family:var(--font-mono);font-size:12px;line-height:1.9;max-height:480px;overflow-y:auto}
+.ll-ok{color:var(--green)} .ll-err{color:var(--red)} .ll-info{color:#a89dff} .ll-muted{color:var(--faint)} .ll-warn{color:var(--amber)}
+.ll-ts{color:var(--faint);margin-right:6px}
+.ll-icon{display:inline-block;width:14px;text-align:center;margin-right:4px}
+.log-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.log-filters{display:flex;gap:6px;flex-wrap:wrap}
+.log-search-input{background:var(--bg3);border:1px solid var(--line2);border-radius:20px;padding:5px 14px;color:var(--text);font-family:var(--font-mono);font-size:11px;outline:none;width:180px;transition:border-color .2s}
+.log-search-input:focus{border-color:var(--accent)}
+.log-search-input::placeholder{color:var(--faint)}
+.term-chrome{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--bg3);border-bottom:1px solid var(--line)}
+.term-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.term-title{font-size:11px;color:var(--muted);margin-left:4px}
+.term-count{margin-left:auto;font-size:10px;color:var(--faint)}
+.log-hl{background:rgba(124,106,255,.35);color:#fff;border-radius:2px;padding:0 1px}
+
+/* QA */
+.qa-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qa-btn{display:flex;flex-direction:column;gap:3px;padding:12px 14px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r2);cursor:pointer;transition:all .15s;text-align:left;font-family:var(--font-mono)}
+.qa-btn:hover{background:var(--bg4)}
+.qa-btn strong{font-size:12px;color:var(--text);font-weight:400}
+.qa-btn span{font-size:11px;color:var(--muted)}
+
+/* SCHEDULE */
+.sch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:12px}
+.sch-row:last-child{border-bottom:none}
+
+/* EMPTY */
+.empty-state{text-align:center;padding:32px;color:var(--muted);font-size:12px}
+.es-icon{font-size:28px;margin-bottom:8px;opacity:.4}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--faint);border-radius:2px}
+/* SMS MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r);padding:28px;width:360px;display:flex;flex-direction:column;gap:16px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.modal-icon{font-size:28px;text-align:center}
+.modal-title{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--text);text-align:center}
+.modal-desc{font-size:12px;color:var(--muted);text-align:center;line-height:1.7}
+.modal-input{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r2);padding:12px 14px;color:var(--text);font-family:var(--font-mono);font-size:18px;outline:none;width:100%;text-align:center;letter-spacing:.2em;transition:border-color .2s}
+.modal-input:focus{border-color:var(--accent)}
+.modal-actions{display:flex;gap:8px}
+.modal-actions .btn{flex:1;justify-content:center}
+.modal-timer{font-size:11px;color:var(--muted);text-align:center}
+.modal-timer span{color:var(--amber);font-weight:500}/* SNAPSHOT UPLOAD */
+.snap-upload-card{background:var(--bg3);border:1px dashed var(--faint);border-radius:var(--r2);overflow:hidden;transition:border-color .2s}
+.snap-upload-card.has-image{border-style:solid;border-color:var(--line2)}
+.snap-upload-card.dragover{border-color:var(--accent);background:rgba(124,106,255,.06)}
+.snap-upload-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);gap:8px}
+.snap-upload-head input{background:transparent;border:none;outline:none;color:var(--text);font-family:var(--font-mono);font-size:11px;flex:1;min-width:0}
+.snap-preview-area{height:180px;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;overflow:hidden;background:var(--bg4)}
+.snap-preview-area img{width:100%;height:100%;object-fit:cover;display:block}
+.snap-placeholder{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--faint);font-size:12px;pointer-events:none}
+.snap-placeholder-icon{font-size:28px;opacity:.4}
+.snap-status-row{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--line);align-items:center}
+.snap-status-btn{font-size:10px;padding:2px 8px;border-radius:20px;border:none;cursor:pointer;font-family:var(--font-head);font-weight:600}
+.snap-ok{background:rgba(34,211,163,.12);color:var(--green)}
+.snap-ok:hover{background:rgba(34,211,163,.25)}
+.snap-ng{background:rgba(255,87,87,.12);color:var(--red)}
+.snap-ng:hover{background:rgba(255,87,87,.25)}
+.snap-clr{background:var(--bg4);color:var(--muted)}
+.snap-clr:hover{background:var(--faint);color:var(--text)}
+.snap-note{flex:1;background:transparent;border:none;outline:none;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.snap-note:focus{color:var(--text)}
+
+/* MOBILE */
+html,body{overflow-x:hidden;max-width:100vw}
+@media (max-width: 680px){
+  .page{padding:16px;gap:16px}
+  .stats-row{grid-template-columns:repeat(2,1fr);gap:8px}
+  .config-grid{grid-template-columns:1fr}
+  .card-payment-row{grid-template-columns:1fr !important;gap:10px !important}
+  .breadcrumb-page,.breadcrumb-sep{display:none}
+  .topbar-brand[style]{padding:0 10px !important;gap:6px !important}
+  .topbar-brand span{display:none}
+  .url-display{font-size:11px}
+  .topbar-actions{padding:0 10px}
+  .btn-primary#btn-run{padding:0 10px;font-size:11px;white-space:nowrap}
+  .card-head{padding:12px 14px;flex-wrap:wrap;gap:8px}
+  .card-body{padding:14px}
+  .cl-item{flex-wrap:wrap;row-gap:8px}
+  .cl-btns{width:100%;justify-content:space-between}
+  .cl-note{flex:1;width:auto}
+  .qa-grid{grid-template-columns:1fr}
+  .result-table th,.result-table td{padding:7px 10px;font-size:11px}
+  .result-card-head{padding:10px 12px}
+  .goal-card{padding:14px}
+  .goals-grid{grid-template-columns:1fr}
+  .visual-grid{grid-template-columns:1fr}
+  .visual-shot-wrap{height:220px}
+  .modal{width:88vw;max-width:340px;padding:22px}
+  .results-toolbar{flex-direction:column;align-items:stretch}
+  .log-toolbar{flex-direction:column;align-items:stretch}
+  .log-search-input{width:auto;flex:1}
 }
 
-function findProfile(url) {
-  return selectorRegistry.find(p => p.match(url)) || null;
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar-brand" style="width:auto;padding:0 16px;gap:10px;justify-content:flex-start">
+    <div class="brand-icon">LT</div>
+    <span style="font-family:'Fira Code',monospace;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap">LandingTester</span>
+  </div>
+  <div class="topbar-mid">
+    <span class="breadcrumb-page" id="breadcrumb-page">дашборд</span>
+    <span class="breadcrumb-sep">/</span>
+    <span class="url-display" id="url-display">Введите URL в Конфигурации</span>
+  </div>
+  <div class="topbar-actions">
+    <div class="run-status" id="run-status"><div class="dot-spin"></div><span id="run-status-text">Запуск...</span></div>
+    <button class="btn btn-primary" id="btn-run" onclick="runTests()">▶ Запустить</button>
+  </div>
+</header>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="nav-item active" onclick="nav('dashboard',this)" title="Дашборд">
+    <span class="ni-icon">◈</span>
+    <span class="ni-label">Дашборд</span>
+  </div>
+  <div class="nav-item" onclick="nav('results',this)" title="Результаты">
+    <span class="ni-icon">≡</span>
+    <span class="ni-label">Результаты</span>
+    <span class="ni-count" id="nc-results">0</span>
+  </div>
+
+
+  <div class="nav-item" onclick="nav('goals',this)" title="Цели Метрики">
+    <span class="ni-icon">◎</span>
+    <span class="ni-label">Цели Метрики</span>
+    <span class="ni-count" id="nc-goals">0</span>
+  </div>
+  <div class="nav-item" onclick="nav('checklist',this)" title="Чек-лист">
+    <span class="ni-icon">☑</span>
+    <span class="ni-label">Чек-лист</span>
+    <span class="ni-count" id="nc-cl">0</span>
+  </div>
+  <div class="nav-item" onclick="nav('visual',this)" title="Вёрстка">
+    <span class="ni-icon" style="display:inline-flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg></span>
+    <span class="ni-label">Вёрстка</span>
+    <span class="ni-count" id="nc-visual">0</span>
+  </div>
+  <div class="sidebar-divider"></div>
+  <div class="nav-item" onclick="nav('config',this)" title="Конфигурация">
+    <span class="ni-icon">⊙</span>
+    <span class="ni-label">Конфигурация</span>
+  </div>
+
+  <div class="nav-item" onclick="nav('log',this)" title="Лог запуска">
+    <span class="ni-icon">▤</span>
+    <span class="ni-label">Лог запуска</span>
+    <span class="ni-count bad" id="nc-log">0</span>
+  </div>
+  <div class="sidebar-bottom">
+    <strong id="last-run-time" style="font-size:10px">—</strong>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main class="main">
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="stats-row">
+    <div class="stat-card stat-green"><div class="sc-label">Прошли</div><div class="sc-val" id="s-pass">—</div><div class="sc-sub">из <span id="s-total">0</span> шагов</div></div>
+    <div class="stat-card stat-red"><div class="sc-label">Упали</div><div class="sc-val" id="s-fail">—</div><div class="sc-sub">требуют внимания</div></div>
+    <div class="stat-card stat-amber"><div class="sc-label">Время прогона</div><div class="sc-val" id="s-time">—</div><div class="sc-sub">секунд</div></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Прогресс выполнения</h3><span class="chip" id="prog-chip">Не запущено</span></div>
+    <div class="card-body">
+      <div class="main-progress">
+        <div class="main-prog-label"><span id="prog-text">0 шагов</span><span id="prog-pct">0%</span></div>
+        <div class="main-prog-bar"><div class="main-prog-fill" id="main-prog" style="width:0%"></div></div>
+      </div>
+      <div class="scanner-wrap" id="suite-outer">
+        <div class="scanner-line" id="scanner-line"></div>
+        <div id="suite-wrap"><div class="empty-state"><div class="es-icon">▷</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="page" id="page-results">
+  <div class="results-toolbar" style="justify-content:flex-end">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="chip" id="res-summary">—</span>
+      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportResults()">⬇ CSV</button>
+    </div>
+  </div>
+  <div class="results-cards" id="results-list">
+    <div class="results-empty">
+      <div class="results-empty-sub">Нет результатов — тесты ещё не запускались</div>
+      <button class="btn btn-ghost" onclick="runTests()">▶ Запустить</button>
+    </div>
+  </div>
+</div>
+
+<!-- GOALS -->
+<div class="page" id="page-goals">
+  <div class="stats-row">
+    <div class="stat-card stat-green"><div class="sc-label">Прошли</div><div class="sc-val" id="g-pass">0</div></div>
+    <div class="stat-card stat-red"><div class="sc-label">Упали</div><div class="sc-val" id="g-fail">0</div></div>
+    <div class="stat-card stat-amber"><div class="sc-label">Не проверено</div><div class="sc-val" id="g-idle">0</div></div>
+  </div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportGoals()">⬇ CSV</button>
+  </div>
+  <div class="goals-grid" id="goals-cards-grid"></div>
+</div>
+
+<!-- CHECKLIST -->
+<div class="page" id="page-checklist">
+  <div class="card">
+    <div class="card-head"><h3>Тестовый чек-лист</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge badge-pass" id="cl-ok">0 OK</span>
+        <span class="badge badge-fail" id="cl-ng">0 Fail</span>
+        <span class="badge badge-idle" id="cl-nd">0 —</span>
+        <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="resetChecklist()">↺ Сброс</button>
+        <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="exportChecklist()">⬇ CSV</button>
+      </div>
+    </div>
+    <div class="card-body" id="cl-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Интеграция с прогоном</h3><span class="chip">Авто</span></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--muted);line-height:1.9">
+        При нажатии «Запустить» автоматически проверяются пункты с меткой <span style="color:var(--accent)">авто</span>:<br>
+        виджет покупки, одноклик, цель _ym_debug=2, персональные посадки.<br>
+        Пункты <span style="color:var(--text)">«Проверен незалогин»</span> и <span style="color:var(--text)">«Проверен новичок»</span> — ручные.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VISUAL -->
+<div class="page" id="page-visual">
+  <div style="text-align:center;padding:8px 0 4px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Одна и та же страница на 4 устройствах — без авторизации и оплаты, только внешний вид</div>
+    <button class="btn btn-primary" id="btn-run-visual" onclick="runVisualCheck()" style="display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 22px;font-size:13px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg> Проверить вёрстку</button>
+  </div>
+  <div class="visual-grid" id="visual-grid">
+    <div class="empty-state" style="grid-column:1/-1"><div class="es-icon" style="display:flex;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg></div>Нажмите «Проверить вёрстку»</div>
+  </div>
+</div>
+
+<!-- CONFIG -->
+<div class="page" id="page-config">
+
+  <div class="card">
+    <div class="card-head"><h3>URL лендинга</h3></div>
+    <div class="card-body">
+      <div class="cfg-field">
+        <label>URL для тестирования</label>
+        <input type="text" id="cfg-url" value="https://example.com" placeholder="https://your-landing.com"/>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">
+        Все тесты — визуальные, пэйвол, цели Метрики — запускаются на этом URL.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Тестовый аккаунт</h3><span class="chip">Авторизация</span></div>
+    <div class="card-body">
+      <div class="config-grid">
+        <div class="cfg-field">
+          <label>
+            Email / логин
+            <span style="margin-left:8px;display:inline-flex;gap:4px;vertical-align:middle">
+              <button onclick="setLoginMode('email')" id="mode-email" style="font-size:10px;padding:1px 7px;border-radius:3px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-family:var(--font-head);font-weight:600">Email</button>
+              <button onclick="setLoginMode('login')" id="mode-login" style="font-size:10px;padding:1px 7px;border-radius:3px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font-head);font-weight:600">Логин</button>
+            </span>
+          </label>
+          <input type="text" id="cfg-acc-email" placeholder="test@example.com" oninput="autoYaRu(this)"/>
+        </div>
+        <div class="cfg-field"><label>Пароль</label>
+          <div style="position:relative">
+            <input type="password" id="cfg-acc-pass" placeholder="••••••••" style="padding-right:36px"/>
+            <button onclick="togglePass()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:0" id="pass-eye">👁</button>
+          </div>
+        </div>
+        <div class="cfg-field"><label>Тип аккаунта</label>
+          <select id="cfg-acc-type">
+            <option value="novice" selected>Новичок</option>
+            <option value="paid-card">Paid + карта привязана (одноклик)</option>
+          </select>
+        </div>
+
+      </div>
+      <div style="margin-top:10px;padding:10px 12px;background:var(--bg3);border-radius:var(--r2);font-size:11px;color:var(--muted);line-height:1.8">
+        При типе аккаунта <span style="color:var(--accent)">Paid + карта привязана</span> — данные карты не нужны. Тест проверит одноклик без SMS по уже привязанной карте в профиле.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Тестовая карта</h3><span class="chip">Stripe / PayPal</span></div>
+    <div class="card-body">
+      <div class="card-payment-row" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <div class="cfg-field"><label>Номер карты</label><input type="text" id="cfg-card-num" placeholder="4242 4242 4242 4242" maxlength="19" oninput="fmtCard(this)" autocomplete="off"/></div>
+        <div class="cfg-field"><label>MM / YY</label><input type="text" id="cfg-card-exp" placeholder="12 / 27" maxlength="7" oninput="fmtExp(this)" autocomplete="off"/></div>
+        <div class="cfg-field"><label>CVC</label><input type="text" id="cfg-card-cvc" placeholder="123" maxlength="4" oninput="this.value=this.value.replace(/\D/g,'')" autocomplete="off"/></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-ghost" style="font-size:11px" onclick="clearCard()">× Очистить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Сьюты тестов</h3></div>
+    <div class="card-body">
+      <div class="toggle-list">
+
+        <div class="toggle-row"><div class="tr-info"><strong>Функциональные тесты</strong><small>H1, CTA, картинки, мета-теги</small></div><label class="switch"><input type="checkbox" id="sw-func" checked><span class="sw-track"></span></label></div>
+        <div class="toggle-row"><div class="tr-info"><strong>Пэйвол + Авторизация + Оплата</strong><small>Использует заданный аккаунт и карту</small></div><label class="switch"><input type="checkbox" id="sw-paywall" checked><span class="sw-track"></span></label></div>
+
+        <div class="toggle-row"><div class="tr-info"><strong>Цели Яндекс Метрики</strong><small>reachGoal через _ym_debug=2</small></div><label class="switch"><input type="checkbox" id="sw-goals" checked><span class="sw-track"></span></label></div>
+        <div class="toggle-row"><div class="tr-info"><strong>Технический чек-лист</strong><small>Виджет, одноклик, посадки</small></div><label class="switch"><input type="checkbox" id="sw-checklist" checked><span class="sw-track"></span></label></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Браузеры</h3></div>
+    <div class="card-body">
+      <div class="toggle-list">
+        <div class="toggle-row"><div class="tr-info"><strong>Chromium Desktop</strong><small>Chrome 124+</small></div><label class="switch"><input type="checkbox" checked id="br-chrome"><span class="sw-track"></span></label></div>
+        <div class="toggle-row"><div class="tr-info"><strong>Яндекс Браузер</strong><small>Chromium-based, Windows/macOS</small></div><label class="switch"><input type="checkbox" id="br-yandex"><span class="sw-track"></span></label></div>
+        <div class="toggle-row"><div class="tr-info"><strong>iPhone 13 · Safari</strong><small>375×812</small></div><label class="switch"><input type="checkbox" id="br-iphone"><span class="sw-track"></span></label></div>
+        <div class="toggle-row"><div class="tr-info"><strong>Pixel 5 · Chrome</strong><small>393×851</small></div><label class="switch"><input type="checkbox" id="br-pixel"><span class="sw-track"></span></label></div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-primary" onclick="applyConfig()">Сохранить конфигурацию</button>
+  </div>
+</div>
+
+<!-- LOG -->
+<div class="page" id="page-log">
+  <div class="log-toolbar">
+    <div class="log-filters">
+      <button class="rf-btn rf-active" onclick="setLogFilter('all',this)">Все</button>
+      <button class="rf-btn" onclick="setLogFilter('ok',this)">✓ Успех</button>
+      <button class="rf-btn" onclick="setLogFilter('warn',this)">⚠ Warn</button>
+      <button class="rf-btn" onclick="setLogFilter('err',this)">✗ Ошибки</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="log-search" placeholder="Поиск по логу…" oninput="renderLogArea()" class="log-search-input"/>
+      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="copyLog(this)">⧉ Копировать</button>
+      <button class="btn btn-ghost" style="height:26px;font-size:11px" onclick="clearLog()">✕ Очистить</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="term-chrome">
+      <span class="term-dot" style="background:#ff5f56"></span>
+      <span class="term-dot" style="background:#ffbd2e"></span>
+      <span class="term-dot" style="background:#27c93f"></span>
+      <span class="term-title">landing-tester — run.log</span>
+      <span class="term-count" id="log-count">0 строк</span>
+    </div>
+    <div class="log-area" id="log-area"><div class="ll-muted">Лог пуст. Нажмите «Запустить».</div></div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<!-- SMS CODE MODAL -->
+<div class="modal-overlay" id="sms-modal">
+  <div class="modal">
+    <div class="modal-icon">📱</div>
+    <div class="modal-title">Введите код из SMS</div>
+    <div class="modal-desc" id="sms-modal-desc">Банк отправил код подтверждения на ваш номер телефона. Введите его ниже чтобы продолжить тест.</div>
+    <input class="modal-input" id="sms-code-input" type="text" maxlength="6" placeholder="• • • • • •"
+      oninput="this.value=this.value.replace(/\D/g,'')"
+      onkeydown="if(event.key==='Enter' && this.value.length>=4) confirmSmsCode()"/>
+    <div class="modal-timer">Ожидание кода: <span id="sms-timer">2:00</span></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="skipSmsCode()">Пропустить</button>
+      <button class="btn btn-primary" onclick="confirmSmsCode()">Подтвердить →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+var BROWSERS = ['Chromium','Яндекс','iPhone','Pixel'];
+
+var GOALS_DATA = [
+  {id:'m1',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m2',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m3',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная оплата',goal:'PaymentCompleted',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'k1',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная авторизация',goal:'AUTH_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k2',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k3',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная оплата',goal:'PLUS_PURCHASE_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'b1',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b2',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b3',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная оплата',goal:'PaywallScreen.Widget.PaymentSuccess',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'p1',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная авторизация',goal:'auth_success',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p2',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Открытие виджета',goal:'CTA_click_growth',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p3',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная оплата',goal:'pluslandingpaymentsucess',altGoals:['lpcpluslandingpaymentsucess','CTA_tariff_buy'],has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+];
+
+// Чек-лист из PDF
+var CHECKLIST = [
+  {id:'cl1',cat:'Отображение',text:'Отображение офферов/текстов корректно',auto:false},
+  {id:'cl2',cat:'Отображение',text:'Проверен незалогин (внешний вид без авторизации)',auto:false},
+  {id:'cl3',cat:'Отображение',text:'Проверен новичок (первый визит / первая подписка)',auto:false},
+  {id:'cl4',cat:'Техническое',text:'Виджет покупки отдаёт корректный оффер',auto:true},
+  {id:'cl5',cat:'Техническое',text:'Одноклик включён — не просит подтверждения карты через SMS на телефон',auto:true},
+  {id:'cl6',cat:'Техническое',text:'Цель на взятие работает через _ym_debug=2',auto:true},
+  {id:'cl7',cat:'Техническое',text:'Одноклик включён на опциях — не просит подтверждения карты через SMS',auto:true},
+  {id:'cl8',cat:'Техническое',text:'Отключены персональные посадки (filmId, sportperfm, albumId и т.д.)',auto:true},
+];
+
+
+var logs = [], results = [], running = false, failCount = 0;
+var goalStatuses = {}, goalNotes = {};
+var clStatuses = {}, clNotes = {};
+
+
+function getLandingUrl() {
+  return (document.getElementById('cfg-url') || {value:''}).value.trim() || 'https://example.com';
 }
+var loginMode = 'email'; // 'email' | 'login'
 
-function sel(profile, key, fallback, configSelectors) {
-  return (configSelectors && configSelectors[key]) || (profile && profile[key]) || fallback;
-}
-
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// Оборачивает промис жёстким таймаутом — нужно для запросов к отдельным
-// фреймам (frame.$()), которые сами по себе не имеют встроенного таймаута
-// и могут зависнуть навсегда, если конкретный фрейм в нестабильном состоянии
-// (перезагружается/переходит на другой URL прямо в этот момент)
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout ' + ms + 'ms')), ms)),
-  ]);
-}
-
-async function findInput(ctx, selectors) {
-  for (const s of selectors) {
-    try {
-      const el = await ctx.$(s);
-      if (el && await el.isVisible()) return el;
-    } catch (_) {}
+function autoYaRu(el) {
+  if (loginMode !== 'email') return;
+  var v = el.value;
+  if (v && !v.includes('@') && !v.endsWith('@ya.ru')) {
+    // не трогаем пока пользователь не закончил ввод
   }
-  return null;
 }
 
-// ── Обработка поп-апа ──────────────────────────────────────────────────────
-async function handlePopup(page, profile, emit) {
-  await sleep(1500);
-
-  // Кнопки закрытия (без авторизации)
-  const closeSels = [
-    'button[aria-label="Закрыть"]', 'button[aria-label="Close"]',
-    '[class*="close"]', '[class*="Close"]',
-    'div.sign-in__close',
-    'button:has-text("Позже")', 'button:has-text("Не сейчас")',
-    'button:has-text("Пропустить")',
-    'button[data-t="button:accept"]', 'button:has-text("Принять")',
-    'button:has-text("Хорошо")',
-  ];
-
-  // Кнопки входа в поп-апе
-  const loginSels = [
-    'div.sign-in__button', '.sign-in__button',
-    'button:has-text("Войти")', 'a:has-text("Войти")',
-    '[class*="auth"] button',
-  ];
-
-  // Сначала пробуем закрыть
-  for (const s of closeSels) {
-    try {
-      const el = await page.$(s);
-      if (el && await el.isVisible()) {
-        const txt = await el.innerText().catch(() => s);
-        await el.click();
-        emit({ type: 'log', msg: 'Поп-ап закрыт: "' + txt.trim().slice(0,30) + '"', logType: 'ok' });
-        await sleep(1000);
-        return 'closed';
+// При потере фокуса — дописываем @ya.ru если нет @
+document.addEventListener('DOMContentLoaded', function() {
+  var emailInput = document.getElementById('cfg-acc-email');
+  if (emailInput) {
+    emailInput.addEventListener('blur', function() {
+      if (loginMode !== 'email') return;
+      var v = this.value.trim();
+      if (v && !v.includes('@')) {
+        this.value = v + '@ya.ru';
       }
-    } catch (_) {}
+    });
   }
+});
 
-  // Проверяем есть ли кнопка «Войти»
-  for (const s of loginSels) {
-    try {
-      const el = await page.$(s);
-      if (el && await el.isVisible()) {
-        return 'auth_required';
-      }
-    } catch (_) {}
-  }
-
-  return 'none';
+function setLoginMode(mode) {
+  loginMode = mode;
+  var inp = document.getElementById('cfg-acc-email');
+  var placeholders = {email:'test@example.com', login:'username'};
+  if (inp) inp.placeholder = placeholders[mode] || 'test@example.com';
+  ['email','login'].forEach(function(m) {
+    var btn = document.getElementById('mode-' + m);
+    if (!btn) return;
+    if (m === mode) {
+      btn.style.background = 'var(--accent)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = 'var(--accent)';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--muted)';
+      btn.style.borderColor = 'var(--line2)';
+    }
+  });
 }
 
-// ── Авторизация через Яндекс Паспорт ───────────────────────────────────────
-async function doYandexAuth(page, config, profile, results, emit, skipLoginStep) {
-  function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
-
-  try {
-    await page.waitForURL('**/passport.yandex**', { timeout: 8000 }).catch(() => {});
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await sleep(300);
-
-    // Если email/логин уже был отправлен ДО перехода на passport (например,
-    // через отдельную форму на самом лендинге, как у некоторых Кинопоиск-лендингов) —
-    // пропускаем весь этот блок и сразу переходим к экрану пароля ниже.
-    if (!skipLoginStep) {
-
-    // кликаем «Ещё» → «Войти по логину»
-    const moreSels = ['[data-testid="split-add-user-more-button"]','button:has-text("Ещё")','a:has-text("Ещё")'];
-    let moreClicked = false;
-    for (const s of moreSels) {
-      try {
-        const el = await page.$(s);
-        if (el && await el.isVisible()) {
-          moreClicked = true;
-          await el.tap().catch(() => el.click());
-          log('Открыто меню «Ещё»', 'ok');
-          await sleep(600);
-          // "Войти по логину" в новой вёрстке — не кнопка, а span/заголовок.
-          // Активно ЖДЁМ появления (не мгновенная проверка — меню может анимироваться).
-          const loginItemSel = '[data-testid="menu-option-switchToLogin"], text=Войти по логину';
-          let loginItem = await page.waitForSelector(loginItemSel, { timeout: 3000 }).catch(() => null);
-          if (!loginItem) {
-            // Запасной способ: ищем "листовой" элемент (без дочерних),
-            // у которого текст ТОЧНО равен "Войти по логину" — так не цепляем
-            // случайно родительский контейнер, как было с :has-text()
-            const handle = await page.evaluateHandle(() => {
-              const all = document.querySelectorAll('body *');
-              for (const el of all) {
-                if (el.children.length === 0 && el.textContent && el.textContent.replace(/\s+/g, ' ').trim() === 'Войти по логину') {
-                  return el;
-                }
-              }
-              return null;
-            });
-            const el = handle.asElement();
-            if (el) loginItem = el;
+function getSelectedDevice() {
+  if (document.getElementById('br-iphone') && document.getElementById('br-iphone').checked) return 'iphone';
+  if (document.getElementById('br-pixel') && document.getElementById('br-pixel').checked) return 'pixel';
+  if (document.getElementById('br-yandex') && document.getElementById('br-yandex').checked) return 'yandex';
+  return 'chromium';
+}
+function makeBrowserTogglesExclusive() {
+  var ids = ['br-chrome','br-yandex','br-iphone','br-pixel'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', function() {
+      if (this.checked) {
+        ids.forEach(function(otherId) {
+          if (otherId !== id) {
+            var other = document.getElementById(otherId);
+            if (other) other.checked = false;
           }
-          if (loginItem) {
-            await loginItem.tap().catch(() => loginItem.click().catch(() => {}));
-            await sleep(300);
-            log('Войти по логину', 'ok');
-          } else {
-            log('Пункт «Войти по логину» не появился за 3с', 'warn');
-          }
-          break;
-        }
-      } catch (_) {}
-    }
-    if (!moreClicked) log('Кнопка «Ещё» не найдена/не видима', 'warn');
-
-    const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
-    log('Логин (для отладки, в квадратных скобках): [' + credential + '] длина: ' + credential.length, 'info');
-
-    let loginField = null;
-    for (let li = 0; li < 15; li++) {
-      loginField = await findInput(page, [
-        'input[data-testid="text-field-input"][autocomplete="username"]',
-        'input[placeholder*="Логин или email" i]',
-        'input#passp-field-login',
-        'input[name="login"]',
-        'input[autocomplete="username"]',
-      ]);
-      if (loginField) break;
-      await sleep(1000);
-    }
-
-    if (loginField) {
-      await loginField.click(); await sleep(200);
-      await loginField.fill(credential);
-      const actualVal = await loginField.inputValue().catch(() => '?');
-      log('Логин: ' + credential + ' (в поле реально: [' + actualVal + '])', 'ok');
-    } else {
-      // клик по координатам
-      await saveDebugShot(page, 'auth-no-login-field', emit);
-      try {
-        const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
-        if (bodyAuth) {
-          const box = await bodyAuth.boundingBox();
-          if (box) await page.mouse.click(box.x + box.width/2, box.y + box.height*0.3);
-        }
-      } catch (_) {}
-      await page.keyboard.type(credential, { delay: 60 });
-      log('Логин введён по координатам', 'ok');
-    }
-
-    let nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
-
-    // Кнопка может быть ещё disabled сразу после fill() — ждём до 3с, пока станет активной
-    if (nextBtn) {
-      for (let bi = 0; bi < 6; bi++) {
-        const isDisabled = await nextBtn.evaluate(b => b.disabled || b.getAttribute('aria-disabled') === 'true').catch(() => false);
-        if (!isDisabled) break;
-        await sleep(500);
+        });
+      } else {
+        // хотя бы один вариант должен быть выбран всегда
+        var anyChecked = ids.some(function(i){ return document.getElementById(i) && document.getElementById(i).checked; });
+        if (!anyChecked) this.checked = true;
       }
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', makeBrowserTogglesExclusive);
+
+function getCreds() {
+  var emailVal = (document.getElementById('cfg-acc-email') || {value:''}).value.trim();
+  var pass     = (document.getElementById('cfg-acc-pass')  || {value:''}).value.trim();
+  var accType  = (document.getElementById('cfg-acc-type')  || {value:'free'}).value;
+  var loginUrl = (document.getElementById('cfg-login-url') || {value:''}).value.trim();
+  var cardNum  = (document.getElementById('cfg-card-num')  || {value:''}).value.trim();
+  var cardExp  = (document.getElementById('cfg-card-exp')  || {value:''}).value.trim();
+  var cardCvc  = (document.getElementById('cfg-card-cvc')  || {value:''}).value.trim();
+  var cardName = (document.getElementById('cfg-card-name') || {value:''}).value.trim();
+  var cardProv = (document.getElementById('cfg-card-prov') || {value:'stripe'}).value;
+  // формируем читаемое имя поля для лога
+  var fieldLabel = loginMode === 'phone' ? 'телефон' : loginMode === 'login' ? 'логин' : 'email';
+  return {
+    email: emailVal, emailLabel: fieldLabel,
+    pass: pass, accType: accType, loginUrl: loginUrl,
+    cardNum: cardNum, cardExp: cardExp, cardCvc: cardCvc, cardName: cardName, cardProv: cardProv,
+    hasAccount: !!(emailVal && pass), hasCard: !!cardNum
+  };
+}
+function rnd(min, max) { return Math.floor(min + Math.random() * (max - min)); }
+function pickBrowser(arr) { return arr[Math.floor(Math.random() * arr.length)] || 'Chromium'; }
+
+
+var PAGE_NAMES = {
+  dashboard:'дашборд', results:'результаты',
+  goals:'цели метрики', checklist:'чек-лист', visual:'вёрстка', config:'конфигурация',
+  log:'лог запуска'
+};
+function closeNavLabel(el) {
+  var label = el.querySelector('.ni-label');
+  if (!label) return;
+  clearTimeout(el._labelTimer);
+  label.style.transition = 'none';
+  label.style.opacity = '0';
+}
+function nav(id, el) {
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('page-' + id).classList.add('active');
+  var bc = document.getElementById('breadcrumb-page');
+  if (bc) bc.textContent = PAGE_NAMES[id] || id;
+  closeNavLabel(el);
+}
+function navTo(id) {
+  var items = document.querySelectorAll('.nav-item');
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].getAttribute('onclick') && items[i].getAttribute('onclick').includes("'" + id + "'")) {
+      nav(id, items[i]); return;
     }
-
-    async function clickNextLogin() {
-      nextBtn = await page.$('button[data-testid="split-add-user-next-login"], button:has-text("Войти"), button:has-text("Далее")').catch(() => null);
-      if (nextBtn) {
-        try {
-          await nextBtn.click({ timeout: 5000 });
-        } catch (_) {
-          log('Клик «Войти/Далее» перекрыт — пробуем force и Enter', 'warn');
-          await saveDebugShot(page, 'click-intercepted-login-next', emit);
-          await nextBtn.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
-        }
-      } else { await page.keyboard.press('Enter'); }
-    }
-
-    await clickNextLogin();
-    await sleep(1500);
-    // Если через 1.5с всё ещё на экране логина (URL не сменился на password-шаг) —
-    // пробуем клик ещё раз, возможно первый пришёлся на ещё-disabled кнопку
-    const urlAfterFirstClick = page.url();
-    await sleep(500);
-    if (page.url() === urlAfterFirstClick) {
-      log('Похоже, экран логина не сменился — пробуем клик «Войти» повторно', 'warn');
-      await clickNextLogin();
-    }
-
-    } // конец блока if (!skipLoginStep)
-
-    // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
-    let passField = null;
-    for (let pi = 0; pi < 15; pi++) {
-      passField = await findInput(page, [
-        'input[data-testid="text-field-input"][autocomplete="current-password"]',
-        'input[type="password"]', 'input[name="passwd"]',
-        'input#passp-field-passwd', 'input[autocomplete="current-password"]',
-      ]);
-      if (passField) break;
-      await sleep(1000);
-    }
-
-    if (passField) {
-      await passField.click(); await sleep(200);
-      await passField.fill(config.account.password);
-      // подстраховка: дублируем через реальную печать по символам —
-      // React иногда завязывает валидацию на keyup, а не только на fill()/input
-      await passField.press('End').catch(() => {});
-      log('Пароль введён', 'ok');
-    } else {
-      log('Поле пароля не найдено за 8с — вводим по координатам', 'warn');
-      await saveDebugShot(page, 'auth-no-password-field', emit);
-      try {
-        const bodyAuth = await page.$('div.body-auth, [class*="body-auth"]');
-        if (bodyAuth) {
-          const box = await bodyAuth.boundingBox();
-          if (box) await page.mouse.click(box.x + box.width/2, box.y + box.height*0.3);
-        }
-      } catch (_) {}
-      await page.keyboard.type(config.account.password, { delay: 60 });
-      log('Пароль введён по координатам', 'ok');
-    }
-
-    const nextBtn2Sel = 'button[data-testid="password-next"], button:has-text("Войти"), button:has-text("Далее")';
-    let nextBtn2 = await page.$(nextBtn2Sel).catch(() => null);
-
-    // Кнопка может быть ещё disabled сразу после fill() — ждём до 3с, пока станет активной
-    if (nextBtn2) {
-      for (let bi = 0; bi < 6; bi++) {
-        const isDisabled = await nextBtn2.evaluate(b => b.disabled || b.getAttribute('aria-disabled') === 'true').catch(() => false);
-        if (!isDisabled) break;
-        await sleep(500);
-      }
-    }
-
-    async function clickNext2() {
-      nextBtn2 = await page.$(nextBtn2Sel).catch(() => null);
-      if (nextBtn2) {
-        try {
-          await nextBtn2.click({ timeout: 5000 });
-        } catch (_) {
-          log('Клик «Войти/Далее» (после пароля) перекрыт — пробуем force и Enter', 'warn');
-          await saveDebugShot(page, 'click-intercepted-password-next', emit);
-          await nextBtn2.click({ timeout: 3000, force: true }).catch(() => page.keyboard.press('Enter').catch(() => {}));
-        }
-      } else { await page.keyboard.press('Enter'); }
-    }
-
-    await clickNext2();
-    await sleep(1500);
-    // Если через 1.5с URL всё ещё содержит /auth/password — пробуем клик ещё раз
-    // (возможно, первый клик пришёлся на ещё-disabled кнопку и ничего не сделал)
-    if (page.url().includes('/auth/password')) {
-      log('Всё ещё на экране пароля — пробуем клик «Далее» повторно', 'warn');
-      await clickNext2();
-    }
-    log('Ждём завершения авторизации...', 'info');
-
-    await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 15000 }).catch(() => {});
-    await sleep(1500);
-
-    // Паспорт иногда проходит через несколько промежуточных шагов
-    // (prepare → auth/finished → реальный редирект на лендинг) —
-    // даём до 3 дополнительных попыток дождаться ухода с passport.yandex
-    for (let ai = 0; ai < 3 && page.url().includes('passport.yandex'); ai++) {
-      log('Ещё на passport (' + page.url().slice(0, 80) + '), ждём повторно...', 'info');
-      await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 10000 }).catch(() => {});
-      await sleep(1500);
-    }
-
-    if (!page.url().includes('passport.yandex')) {
-      log('Авторизация успешна', 'ok');
-      results.push({ name:'Авторизация', status:'pass' });
-      return true;
-    } else {
-      log('Всё ещё на passport — проверьте логин/пароль', 'warn');
-      results.push({ name:'Авторизация', status:'warn', note:'Проверьте логин/пароль' });
-      return false;
-    }
-  } catch (e) {
-    log('Ошибка авторизации: ' + e.message, 'fail');
-    results.push({ name:'Авторизация', status:'fail', error: e.message });
-    return false;
   }
 }
 
-// ── Главная функция ─────────────────────────────────────────────────────────
-async function runTestInner(config, emit, browserRef) {
-  const results = [];
-  const ymGoals = [];
 
-  // Очищаем скриншоты предыдущих прогонов — иначе public/debug/ будет
-  // бесконечно копиться и есть место на диске
-  try {
-    const oldFiles = fs.readdirSync(debugDir);
-    for (const f of oldFiles) {
-      try { fs.unlinkSync(path.join(debugDir, f)); } catch (_) {}
-    }
-  } catch (_) {}
+var logFilter = 'all';
 
-  function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
-  function result(name, status, note, error) {
-    const r = { name, status };
-    if (note) r.note = note;
-    if (error) r.error = error;
-    results.push(r);
-    emit({ type:'result', name, status, note, error });
+function log(msg, type) {
+  type = type || 'muted';
+  var ts = new Date().toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  logs.push({msg:msg, type:type, ts:ts});
+  if (type === 'err') { failCount++; document.getElementById('nc-log').textContent = failCount; }
+  renderLogArea();
+}
+
+function setLogFilter(f, btn) {
+  logFilter = f;
+  document.querySelectorAll('.log-filters .rf-btn').forEach(function(b){ b.classList.remove('rf-active'); });
+  if (btn) btn.classList.add('rf-active');
+  renderLogArea();
+}
+
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+var LOG_ICONS = { ok:'✓', err:'✗', warn:'⚠', info:'›', muted:'·' };
+
+function renderLogArea() {
+  var area = document.getElementById('log-area');
+  var countEl = document.getElementById('log-count');
+  var search = (document.getElementById('log-search') || {value:''}).value.trim().toLowerCase();
+
+  var filtered = logs.filter(function(l) {
+    if (logFilter !== 'all' && l.type !== logFilter) return false;
+    if (search && l.msg.toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  });
+
+  if (countEl) countEl.textContent = filtered.length + ' / ' + logs.length + ' строк';
+
+  if (!logs.length) {
+    area.innerHTML = '<div class="ll-muted">Лог пуст. Нажмите «Запустить».</div>';
+    return;
   }
-
-  const profile = findProfile(config.landingUrl);
-  if (profile) log('Профиль: ' + profile.name, 'info');
-
-  // Определяем сервис заранее — нужно для live-обновления целей Метрики по ходу теста
-  const svc = config.landingUrl.includes('music.yandex') ? 'music'
-    : config.landingUrl.includes('kinopoisk') ? 'kp'
-    : config.landingUrl.includes('books.yandex') ? 'books'
-    : config.landingUrl.includes('plus.yandex') ? 'plus'
-    : null;
-
-  // Запуск браузера
-  const isMobile = config.device === 'iphone' || config.device === 'pixel';
-  log('Устройство: ' + (config.device || 'chromium'), 'info');
-  log('Запускаем браузер...', 'info');
-
-  let browser, context;
-  try {
-    if (config.device === 'iphone') {
-      browser = await webkit.launch({ headless: true });
-      context = await browser.newContext({
-        ...devices['iPhone 13'],
-        deviceScaleFactor: 2,
-        locale: 'ru-RU',
-        timezoneId: 'Europe/Moscow',
-      });
-    } else if (config.device === 'pixel') {
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
-      });
-      context = await browser.newContext({
-        ...devices['Pixel 5'],
-        locale: 'ru-RU',
-        timezoneId: 'Europe/Moscow',
-      });
-    } else if (config.device === 'yandex') {
-      // Реального бинарника Яндекс Браузера на Linux-сервере нет — используем обычный
-      // Chromium с User-Agent Яндекс Браузера. Это не полноценная эмуляция движка
-      // (внутри всё равно Blink/Chromium), но лендинг увидит именно этот UA.
-      log('Яндекс Браузер: реального движка на сервере нет, эмулируем через Chromium + UA Яндекс Браузера', 'warn');
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
-      });
-      context = await browser.newContext({
-        locale: 'ru-RU',
-        timezoneId: 'Europe/Moscow',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 YaBrowser/24.6.0.0 Safari/537.36',
-      });
-    } else {
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
-      });
-      context = await browser.newContext({
-        locale: 'ru-RU',
-        timezoneId: 'Europe/Moscow',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      });
-    }
-  } catch (e) {
-    emit({ type:'error', message: 'Ошибка запуска браузера: ' + e.message });
-    emit({ type:'results', results });
+  if (!filtered.length) {
+    area.innerHTML = '<div class="ll-muted">Нет строк по фильтру/поиску.</div>';
     return;
   }
 
-  const page = await context.newPage();
-  browserRef.browser = browser; // чтобы watchdog снаружи мог принудительно закрыть браузер
+  area.innerHTML = filtered.map(function(l) {
+    var msg = l.msg
+      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#a89dff;text-decoration:underline dotted;text-underline-offset:2px">$1</a>')
+      .replace(/(\d+ms)/g, '<span style="color:var(--faint)">$1</span>');
+    if (search) {
+      msg = msg.replace(new RegExp('('+escapeRegex(search)+')', 'ig'), '<span class="log-hl">$1</span>');
+    }
+    var icon = LOG_ICONS[l.type] || '·';
+    return '<div><span class="ll-ts">'+l.ts+'</span><span class="ll-icon ll-'+l.type+'">'+icon+'</span><span class="ll-'+l.type+'">'+msg+'</span></div>';
+  }).join('');
+  area.scrollTop = area.scrollHeight;
+}
 
-  // Строгий фильтр: реальные события Яндекс.Метрики, а не любой текст со словом "goal"
-  // (например, у Яндекс.Паспорта в служебных URL встречается goal=https://..., это не про Метрику)
-  const METRIKA_GOAL_RE = /Reach goal\.|Goal id\s*[:=]|ym\(\s*\d+\s*,\s*['"]reachGoal['"]/i;
+function copyLog(btn) {
+  if (!logs.length) { alert('Лог пуст'); return; }
+  var text = logs.map(function(l){ return l.ts + '  ' + l.msg; }).join('\n');
 
-  // Перехват событий Метрики. Используем оба источника (CDP и обычный page.on('console')),
-  // т.к. на практике только page.on('console') не всегда ловит события Метрики надёжно —
-  // а с обоими сразу события задваивались. Решаем через дедупликацию по тексту события.
-  const seenGoalTexts = new Set();
-  function handleConsoleText(text) {
-    if (!METRIKA_GOAL_RE.test(text)) return;
-    if (seenGoalTexts.has(text)) return; // такое событие уже обработано вторым слушателем
-    seenGoalTexts.add(text);
-    ymGoals.push(text);
-    log('Метрика: ' + text.slice(0, 100), 'ok');
-    if (svc) emit({ type:'goals', svc, firedGoals: [text] });
+  function flashOk() {
+    if (btn) { var old = btn.textContent; btn.textContent = '✓ Скопировано'; setTimeout(function(){ btn.textContent = old; }, 1200); }
   }
 
-  page.on('console', msg => handleConsoleText(msg.text()));
+  function fallbackCopy() {
+    // Работает и по http, где navigator.clipboard недоступен (требует https)
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+    if (ok) flashOk(); else prompt('Скопируйте вручную:', text);
+  }
 
-  try {
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('Runtime.enable');
-    cdp.on('Runtime.consoleAPICalled', event => {
-      const text = (event.args||[]).map(a => a.value || a.description || '').join(' ');
-      handleConsoleText(text);
-    });
-  } catch (_) {}
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(flashOk).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
+}
 
-  try {
-    // ── БЛОК 1: Открытие лендинга ──────────────────────────────────────────
-    const ymUrl = config.landingUrl + (config.landingUrl.includes('?') ? '&' : '?') + '_ym_debug=2';
-    log('Открываем: ' + ymUrl, 'info');
-    await page.goto(ymUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await sleep(2500);
-    log('Страница загружена', 'ok');
-    result('Открытие лендинга', 'pass');
+function clearLog() {
+  logs = []; failCount = 0;
+  document.getElementById('nc-log').textContent = '0';
+  renderLogArea();
+}
 
-    // ── БЛОК 2: Поп-ап ─────────────────────────────────────────────────────
-    const popupResult = await handlePopup(page, profile, emit);
 
-    if (popupResult === 'closed') {
-      result('Поп-ап', 'pass', 'Нет поп-апа');
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await sleep(3000);
-    } else if (popupResult === 'none') {
-      result('Поп-ап', 'pass', 'Нет поп-апа');
-    }
+function resetAll() {
+  results = [];
+  ['s-pass','s-fail','s-time','s-browsers'].forEach(function(id){ document.getElementById(id).textContent = '—'; });
+  document.getElementById('s-total').textContent = '0';
+  document.getElementById('suite-wrap').innerHTML = '<div class="empty-state"><div class="es-icon">▷</div></div>';
+  document.getElementById('main-prog').style.width = '0%';
+  document.getElementById('prog-text').textContent = '0 шагов';
+  document.getElementById('prog-pct').textContent = '0%';
+  document.getElementById('prog-chip').textContent = 'Не запущено';
+  document.getElementById('results-list').innerHTML = '<div class="results-empty"><div class="results-empty-sub">Нет результатов — тесты ещё не запускались</div><button class="btn btn-ghost" onclick="runTests()">▶ Запустить</button></div>';
+  clearLog();
+}
 
-    // ── БЛОК 3: Базовые проверки ───────────────────────────────────────────
-    // Авторизация
-    if (config.account && config.account.email && config.account.password) {
-      log('Начинаем авторизацию...', 'info');
 
-      // Некоторые лендинги (например часть Кинопоиска) показывают форму
-      // входа с переключателем Телефон/Почта сразу на странице, без всякой
-      // CTA-кнопки. Если в профиле есть emailToggle и он реально виден —
-      // используем эту форму напрямую, минуя поиск CTA и попапа.
-      let usedInlineEmailForm = false;
-      const emailToggleSel = profile && profile.emailToggle;
-      if (emailToggleSel) {
-        const toggleEl = await page.$(emailToggleSel).catch(() => null);
-        if (toggleEl && await toggleEl.isVisible().catch(() => false)) {
-          usedInlineEmailForm = true;
-          log('Форма email найдена прямо на лендинге — используем её напрямую', 'info');
-          await toggleEl.click().catch(() => {});
-          await sleep(500);
+function buildStaticSuites() {
+  return [
+    {id:'visual', name:'Скриншоты', sw:'sw-visual', steps:[
+      {name:'Landing desktop snapshot', exp:'ok', d:[200,500]},
+      {name:'Landing mobile snapshot',  exp:'ok', d:[200,500]},
+    ]},
+    {id:'func', name:'Функциональные', sw:'sw-func', steps:[
+      {name:'H1 присутствует',               exp:'ok', d:[80,200]},
+      {name:'CTA кнопка видима',             exp:'ok', d:[80,200]},
+      {name:'Нет сломанных картинок',        exp:'ok', d:[100,250]},
+      {name:'Мета title и description',      exp:'ok', d:[80,180]},
+      {name:'Нет console.error',             exp:'ok', d:[100,300]},
+      {name:'Время ответа < 3с',             exp:'ok', d:[200,500]},
+    ]},
+    {id:'locale', name:'Мультилокаль', sw:'sw-locale', steps:[
+      {name:'en-US — символ $', exp:'ok', d:[100,300]},
+      {name:'de-DE — символ €', exp:'ok', d:[100,300]},
+      {name:'ru-RU — символ ₽', exp:'ok', d:[100,300]},
+    ]},
+  ];
+}
 
-          const emailFieldSel = sel(profile, 'emailField', 'input[name="email"]', config.selectors);
-          const emailEl = await page.$(emailFieldSel).catch(() => null);
-          const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
-          if (emailEl) {
-            await emailEl.click(); await sleep(200);
-            await emailEl.fill(credential);
-            log('Email введён: ' + credential, 'ok');
-          } else {
-            log('Поле email не найдено на встроенной форме', 'warn');
-          }
+function buildPaywallSuite(creds, landingUrl) {
+  var steps = [
+    {name:'Открытие пэйвола',                     exp:'ok',  d:[200,500]},
+    {name:'Блок с ценами отображается',           exp:'ok',  d:[100,250]},
+    {name:'Символ валюты найден',                 exp:'ok',  d:[80,150]},
+    {name:'Кнопка оплаты кликабельна',            exp:'ok',  d:[80,150]},
+    {name:'Ссылка Privacy Policy',                exp:'ok',  d:[60,120]},
+    {name:'Горизонтальный скролл на мобиле: нет', exp:'ok',  d:[80,150]},
+  ];
+  if (creds.hasAccount) {
+    var lu = creds.loginUrl || landingUrl;
+    steps.push(
+      {name:'Навигация: '+lu.replace('https://','').split('/')[0], exp:'ok', d:[300,600]},
+      {name:'Поле '+creds.emailLabel+' → '+creds.email, exp:'ok', d:[200,350]},
+      {name:'Поле пароля → заполнено',              exp:'ok',  d:[150,300]},
+      {name:'Клик «Войти»',                         exp:'ok',  d:[100,200]},
+      {name:'Ожидание редиректа',                   exp:'ok',  d:[600,1200]},
+      {name:'Авторизация ['+creds.accType+']',      exp: creds.accType==='expired' ? 'warn' : 'ok', d:[200,400]}
+    );
+  } else {
+    steps.push({name:'Авторизация: не задана — пропуск', exp:'skip', d:[50,100]});
+  }
+  if (creds.accType === 'paid-card' || creds.hasCard) {
+    var masked = creds.cardNum ? creds.cardNum.replace(/\d(?=\d{4})/g,'*') : '—';
+    var isDec = creds.cardProv === 'tinkoff-fail' || creds.cardProv === 'yookassa-fail';
+    var issms = creds.cardProv === 'tinkoff-sms'  || creds.cardProv === 'yookassa-sms';
+    var provName = isDec ? 'Оплата (отказ)' : issms ? 'Оплата (SMS-подтверждение)' : 'Оплата';
 
-          const loginBtnSel = sel(profile, 'loginBtn', 'button.login__button', config.selectors);
-          const loginBtnEl = await page.$(loginBtnSel).catch(() => null);
-          if (loginBtnEl) {
-            await loginBtnEl.click().catch(() => {});
-            log('Клик «Войти» на встроенной форме', 'ok');
-          } else {
-            log('Кнопка «Войти» встроенной формы не найдена', 'warn');
-          }
-
-          await sleep(2000);
-          // Дальше — переход на passport.yandex.ru и стандартный экран пароля,
-          // который уже отлажен для Музыки. skipLoginStep=true, чтобы не пытаться
-          // ещё раз пройти «Ещё → Войти по логину» — email уже отправлен выше.
-          await doYandexAuth(page, config, profile, results, emit, true);
-        }
+    if (creds.accType === 'paid-card') {
+      // сценарий одноклика — карта уже привязана в профиле, вводить не нужно
+      steps.push(
+        {name:'Одноклик: карта уже привязана в профиле',   exp:'ok', d:[200,400]},
+        {name:'Клик «Оплатить» без ввода данных карты',    exp:'ok', d:[200,400]},
+        {name:'Ожидание ответа платёжной системы',         exp:'ok', d:[600,1200]},
+        {name:'SMS-подтверждение не запрошено',            exp:'ok', d:[300,600]},
+        {name:'Статус одноклика: успех',                   exp:'ok', d:[200,400]}
+      );
+    } else if (creds.hasCard) {
+      steps.push({name:'Открытие формы оплаты', exp:'ok', d:[300,600]});
+      steps.push(
+        {name:'Номер карты: '+masked,                                     exp:'ok',  d:[300,500]},
+        {name:'Срок '+creds.cardExp+' · CVC '+(creds.cardCvc?'•••':'—'), exp:creds.cardCvc?'ok':'fail', d:[150,300]},
+        {name:'Имя: '+(creds.cardName||'—'),                              exp:'ok',  d:[100,200]},
+        {name:'Клик «Оплатить»',                                          exp:'ok',  d:[200,400]},
+        {name:'Ожидание ответа '+provName,                                exp:'ok',  d:[800,1500]}
+      );
+      if (issms) {
+        steps.push(
+          {name:'SMS-подтверждение: открытие окна банка',      exp:'ok', d:[500,900]},
+          {name:'SMS-подтверждение: введите код из SMS',        exp:'ok', d:[100,200], sms:true},
+          {name:'SMS-подтверждение: возврат на страницу',       exp:'ok', d:[300,600]}
+        );
       }
-
-      if (!usedInlineEmailForm) {
-      // CTA кнопка
-      const ctaSels = (profile && profile.cta) || [
-        'div.promo-sport__button-subscription-offer',
-        '[class*="button_background_gradient"]',
-        'button:has-text("До года бесплатно")',
-        'button:has-text("Попробовать бесплатно")',
-        'button:has-text("Попробовать")',
-        'span:has-text("До года бесплатно")',
-        '.button_type_new-design span',
-      ];
-
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await sleep(500);
-
-      // Поп-ап (например, "Войдите, чтобы продолжить") мог появиться заново
-      // после скролла/времени на странице — закрываем его ещё раз перед кликом по CTA
-      const popupAgain = await handlePopup(page, profile, emit);
-      if (popupAgain === 'closed') { await sleep(800); }
-
-      let ctaClicked = false;
-
-      // Активно ждём появления CTA (карусель/контент на мобиле может грузиться с задержкой) —
-      // раньше была одна мгновенная проверка, из-за которой кнопка иногда "не находилась",
-      // просто не успев отрендериться
-      if (!ctaClicked && !(popupAgain === 'auth_required')) {
-        await page.waitForSelector(ctaSels.join(', '), { timeout: 15000 }).catch(() => {});
-      }
-
-      if (popupAgain === 'auth_required') {
-        // Поп-ап сам по себе — это уже экран входа (например "Войдите, чтобы продолжить").
-        // Кликаем прямо в него, не пытаясь достучаться до кнопки лендинга под ним.
-        const popupLoginSel = sel(profile, 'popupLogin', 'div.sign-in__button, .sign-in__button, button:has-text("Войти"), a:has-text("Войти"), [class*="auth"] button', config.selectors);
-        const loginBtn = await page.$(popupLoginSel).catch(() => null);
-        if (loginBtn && await loginBtn.isVisible().catch(() => false)) {
-          await loginBtn.click({ timeout: 5000 }).catch(() => loginBtn.tap().catch(() => {}));
-          log('Клик «Войти» в поп-апе (повторная проверка)', 'ok');
-          ctaClicked = true;
-          await sleep(2000);
-        }
-      }
-
-      for (const s of (ctaClicked ? [] : ctaSels)) {
-        try {
-          const el = await page.$(s);
-          if (el) {
-            await el.scrollIntoViewIfNeeded().catch(() => {});
-            const box = await el.boundingBox();
-            if (box && box.width > 0) {
-              // Диагностика: что реально лежит в точке клика (вдруг сверху невидимый оверлей)
-              try {
-                const cx = box.x + box.width/2, cy = box.y + box.height/2;
-                const atPoint = await page.evaluate(([x,y]) => {
-                  const el2 = document.elementFromPoint(x, y);
-                  return el2 ? (el2.outerHTML || '').slice(0, 200) : 'null';
-                }, [cx, cy]);
-                log('В точке клика реально: ' + atPoint, 'info');
-              } catch (_) {}
-
-              if (isMobile) {
-                // На мобилке авторизация может открыться в popup-окне.
-                // Используем tap() — на мобильной вёрстке некоторые сайты
-                // реагируют иначе на touch-события, чем на обычный клик мышью.
-                const [popup] = await Promise.all([
-                  context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => page.mouse.click(box.x + box.width/2, box.y + box.height/2))),
-                ]);
-                log('Клик CTA: ' + s.slice(0,50), 'ok');
-                ctaClicked = true;
-                if (popup) {
-                  log('Авторизация открылась в отдельном окне', 'ok');
-                  await popup.waitForLoadState('domcontentloaded').catch(() => {});
-                  await sleep(1500);
-                  if (config.account && config.account.email) {
-                    await doYandexAuth(popup, config, profile, results, emit);
-                    await sleep(2000);
-                  }
-                  break;
-                } else {
-                  await sleep(2000);
-                }
-              } else {
-                await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                log('Клик CTA: ' + s.slice(0,50), 'ok');
-                ctaClicked = true;
-                await sleep(2500);
-              }
-              break;
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (!ctaClicked) {
-        // диагностика — логируем все видимые кнопки
-        log('CTA не найдена. Видимые кнопки:', 'warn');
-        try {
-          const allBtns = await page.$$('button, a[href], div[class*="button"]');
-          for (const btn of allBtns) {
-            try {
-              if (await btn.isVisible()) {
-                const txt = (await btn.innerText().catch(() => '')).trim().slice(0, 60);
-                if (txt) log('  · "' + txt + '"', 'info');
-              }
-            } catch (_) {}
-          }
-        } catch (_) {}
-      }
-
-      // Авторизация через попап или Паспорт
-      if (popupResult === 'auth_required') {
-        const popupLoginSel = sel(profile, 'popupLogin', 'div.sign-in__button', config.selectors);
-        const loginBtn = await page.$(popupLoginSel).catch(() => null);
-        if (loginBtn && await loginBtn.isVisible().catch(() => false)) {
-          await loginBtn.click();
-          await sleep(1500);
-          log('Клик «Войти» в поп-апе', 'ok');
-        }
-      }
-
-      await doYandexAuth(page, config, profile, results, emit);
-      } // конец блока if (!usedInlineEmailForm)
-    }
-
-    // H1
-    log('Проверяем H1...', 'info');
-    const h1Els = await page.$$('h1');
-    let h1Text = '';
-    for (const el of h1Els) {
-      try {
-        const txt = (await el.innerText()).trim();
-        if (txt.length > h1Text.length && !txt.toLowerCase().includes('cookie')) h1Text = txt;
-      } catch (_) {}
-    }
-    if (h1Text) { log('H1: ' + h1Text.slice(0,60), 'ok'); result('H1 присутствует', 'pass', h1Text.slice(0,60)); }
-    else { log('H1 не найден', 'warn'); result('H1 присутствует', 'warn', 'Не найден'); }
-
-    // Meta title
-    const metaTitle = await page.title().catch(() => '');
-    if (metaTitle) { log('Title: ' + metaTitle.slice(0,60), 'ok'); result('Meta title', 'pass', metaTitle.slice(0,60)); }
-    else { result('Meta title', 'warn', 'Пустой'); }
-
-    // Битые картинки
-    const brokenImgs = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('img'))
-        .filter(img => !img.complete || img.naturalWidth === 0)
-        .map(img => img.src).slice(0,5)
-    ).catch(() => []);
-    if (brokenImgs.length === 0) { log('Битых картинок нет', 'ok'); result('Битые картинки', 'pass'); }
-    else { log('Битые картинки: ' + brokenImgs.length, 'warn'); result('Битые картинки', 'warn', brokenImgs.length + ' шт.'); }
-
-    // Персональные посадки
-    const personalParams = ['filmId','sportperfm','albumId','artistId'];
-    const urlHasPersonal = personalParams.find(p => config.landingUrl.includes(p));
-    if (urlHasPersonal) { result('Персональные посадки', 'warn', urlHasPersonal + ' в URL'); }
-    else { log('Персональных посадок нет', 'ok'); result('Персональные посадки', 'pass', 'Чисто'); }
-
-    // ── БЛОК 4: Виджет и оплата ────────────────────────────────────────────
-    if (config.card && config.card.number && config.account && config.account.email) {
-      log('Ищем виджет покупки...', 'info');
-      await sleep(2000);
-
-      // На мобиле клик по CTA может открыть виджет в НОВОЙ странице (popup),
-      // а не в текущей — тогда весь дальнейший поиск виджета/полей нужно вести
-      // именно в этой новой странице, а не в исходной.
-      let activePage = page;
-
-      // После авторизации кликаем CTA снова чтобы открыть виджет
-      const ctaSels2 = (profile && profile.cta) || [
-        'div.promo-sport__button-subscription-offer',
-        '[class*="button_background_gradient"]',
-        'button:has-text("До года бесплатно")',
-        'button:has-text("Попробовать бесплатно")',
-        'button:has-text("Попробовать")',
-        'button:has-text("Подключить")',
-        'span:has-text("До года бесплатно")',
-        '.button_type_new-design span',
-      ];
-      await activePage.evaluate(() => window.scrollTo(0, 0));
-      await sleep(500);
-      await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 15000 }).catch(() => {});
-      for (const s of ctaSels2) {
-        try {
-          const el = await activePage.$(s);
-          if (el) {
-            await el.scrollIntoViewIfNeeded().catch(() => {});
-            const box = await el.boundingBox();
-            if (box && box.width > 0) {
-              if (isMobile) {
-                const [popup] = await Promise.all([
-                  context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2))),
-                ]);
-                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
-                if (popup) {
-                  log('Виджет открылся в отдельном окне', 'ok');
-                  await popup.waitForLoadState('domcontentloaded').catch(() => {});
-                  activePage = popup;
-                  await sleep(1500);
-                }
-              } else {
-                await activePage.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
-              }
-              await sleep(3000);
-              break;
-            }
-          }
-        } catch (_) {}
-      }
-
-      // Кнопка «Добавить карту»
-      const addCardBtn = await activePage.$('[data-testid="payment-method-button~new-card"], button:has-text("Добавить карту")').catch(() => null);
-      if (addCardBtn && await addCardBtn.isVisible().catch(() => false)) {
-        await addCardBtn.click({ force: true });
-        log('Клик «Добавить карту»', 'ok');
-        await sleep(2000);
-      }
-
-      // Диагностика: показываем все фреймы прямо сейчас, не дожидаясь ошибки —
-      // полезно видеть, что вообще есть на странице в этот момент
-      const framesNow = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
-      log('Фреймы на странице сейчас: ' + (framesNow.length ? framesNow.slice(0,6).join(' | ').slice(0,300) : 'нет фреймов'), 'info');
-      log('URL страницы сейчас: ' + activePage.url(), 'info');
-
-      // Ищем diehard iframe
-      let trustFrame = null;
-      const diehardTimeout = (profile && profile.diehardTimeout) || 15;
-      for (let i = 0; i < diehardTimeout * 2; i++) {
-        for (const f of activePage.frames()) {
-          if (f.url().includes('diehard.yandex.ru') || f.url().includes('diehard.yandex.net')) {
-            trustFrame = f; break;
-          }
-        }
-        if (trustFrame) break;
-        await sleep(500);
-      }
-
-      if (!trustFrame) {
-        // проверяем payment-widget — тоже с повтором, а не одной попыткой
-        for (let i = 0; i < 10; i++) {
-          for (const f of activePage.frames()) {
-            if (f.url().includes('payment-widget')) { trustFrame = f; break; }
-          }
-          if (trustFrame) break;
-          await sleep(500);
-        }
-      }
-
-      if (!trustFrame) {
-        // Диагностика: показываем все фреймы, которые реально есть на странице,
-        // чтобы понять, под каким доменом/паттерном виджет открылся на самом деле
-        const allFrameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
-        if (allFrameUrls.length) {
-          log('Виджет не найден. Фреймы на странице: ' + allFrameUrls.slice(0,6).join(' | ').slice(0,300), 'warn');
-        } else {
-          log('Виджет не найден. На странице вообще нет дочерних фреймов', 'warn');
-        }
-        log('URL текущей страницы: ' + activePage.url(), 'warn');
-      }
-
-      if (trustFrame) {
-        log('Фрейм оплаты найден: ' + trustFrame.url().slice(0,60), 'ok');
-        result('Виджет открылся', 'pass');
-
-        await sleep(1000);
-
-        // Ввод карты — используем точные ID как в рабочем test.js
-        const cardNum = config.card.number.replace(/\s/g, '');
-        const cardExpiry = config.card.expiry || '12/27';
-        const cardCvc = config.card.cvc || '123';
-        const expParts = cardExpiry.split('/');
-        const expMonth = (expParts[0] || '').trim();
-        const expYear  = (expParts[1] || '').trim();
-
-        // Форма карты не всегда лежит именно в trustFrame — иногда она рендерится
-        // во вложенном дочернем фрейме с другим доменом (например, у payment-widget.plus.yandex.ru).
-        // Поэтому ищем поле номера карты по ВСЕМ фреймам страницы, а не только в trustFrame.
-        let cardFrame = null;
-        for (let ci = 0; ci < 22; ci++) {
-          for (const f of activePage.frames()) {
-            const el = await withTimeout(f.$('input#regular-card-number-input'), 2000).catch(() => null);
-            if (el) { cardFrame = f; break; }
-          }
-          if (cardFrame) break;
-          await sleep(1000);
-        }
-
-        if (cardFrame && cardFrame !== trustFrame) {
-          log('Поле карты найдено во вложенном фрейме: ' + cardFrame.url().slice(0,60), 'ok');
-        }
-        if (!cardFrame) {
-          log('Поле карты не появилось ни в одном фрейме', 'warn');
-          cardFrame = trustFrame; // на всякий случай пробуем как раньше
-        }
-
-        const numEl = await cardFrame.$('input#regular-card-number-input');
-        if (numEl) {
-          await numEl.click({ force: true }); await sleep(200);
-          await numEl.fill(cardNum);
-          log('Номер карты введён', 'ok'); await sleep(300);
-        } else { log('Поле номера карты не найдено', 'warn'); }
-
-        const expMonthEl = await cardFrame.$('input#regular-card-month-input');
-        if (expMonthEl) {
-          await expMonthEl.click({ force: true }); await sleep(200);
-          await expMonthEl.fill(expMonth);
-          log('Месяц: ' + expMonth, 'ok'); await sleep(200);
-        }
-
-        const expYearEl = await cardFrame.$('input#regular-card-year-input');
-        if (expYearEl) {
-          await expYearEl.click({ force: true }); await sleep(200);
-          await expYearEl.fill(expYear);
-          log('Год: ' + expYear, 'ok'); await sleep(200);
-        }
-
-        const cvcEl = await cardFrame.$('input#regular-card-cvv-input, .field-container__cvv_regular input, .field-container__cvv input');
-        if (cvcEl) {
-          await cvcEl.click({ force: true }); await sleep(200);
-          await cvcEl.fill(cardCvc);
-          log('CVC введён', 'ok'); await sleep(300);
-        }
-
-        await sleep(1000);
-
-        // Кнопка «Подключить» — сначала ищем там же, где была форма карты,
-        // затем в payment-widget iframe, и только потом на самой странице
-        let widgetFrame = null;
-        for (const f of activePage.frames()) {
-          if (f.url().includes('payment-widget')) { widgetFrame = f; break; }
-        }
-        const connectBtnSel = sel(profile, 'connectBtn',
-          'button[data-testid="trust-card-form-submit-button"], button:has-text("Подключить")',
-          config.selectors);
-        const connectBtn = await cardFrame.$(connectBtnSel).catch(() => null)
-          || (widgetFrame ? await widgetFrame.$(connectBtnSel).catch(() => null) : null)
-          || await activePage.$(connectBtnSel).catch(() => null);
-
-        if (connectBtn) {
-          await connectBtn.click({ force: true });
-          log('Клик «Подключить»', 'ok');
-          await sleep(3000);
-
-            // SMS подтверждение
-            const isPaidCard = config.account && config.account.type === 'paid-card';
-
-            if (!isPaidCard) {
-              // Сначала ждём появления SMS-поля на странице (до 60 секунд)
-              log('Ждём SMS-поле на странице...', 'info');
-              let smsField = null;
-              let smsFrame = activePage;
-              for (let si = 0; si < 60; si++) {
-                // проверяем 3DS фрейм банка и ищем SMS поле
-                let has3ds = false;
-                for (const f of activePage.frames()) {
-
-                  const furl = f.url();
-                  // 3DS фрейм банка — ждём именно страницу с формой ввода кода
-                  // trust.yandex.ru — промежуточный, secure.tbank.ru — реальная форма
-                  if (furl.includes('secure.tbank.ru') || furl.includes('3dsec') ||
-                      (furl.includes('acs/') && furl.includes('challenge'))) {
-                    has3ds = true;
-                    smsFrame = f;
-                    log('3DS форма банка: ' + furl.slice(0, 80), 'ok');
-                    break;
-                  }
-                  // ищем поле напрямую
-                  try {
-                    const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
-                    if (sf2 && await sf2.isVisible().catch(() => false)) {
-                      smsField = sf2; smsFrame = f;
-                      log('SMS-поле: ' + furl.slice(0, 80), 'ok');
-                      break;
-                    }
-                  } catch (_) {}
-                }
-                if (smsField || has3ds) break;
-                // страница напрямую
-                smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
-                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
-                smsField = null;
-                await sleep(1000);
-              }
-              if (smsField) {
-                log('SMS-поле найдено — показываем окошко', 'ok');
-              } else if (smsFrame && smsFrame !== activePage) {
-                log('3DS фрейм банка найден — показываем окошко', 'ok');
-              } else {
-                log('SMS-поле не найдено — всё равно показываем окошко', 'warn');
-              }
-
-              // Показываем модалку — сервер сам пришлёт sms_required при обработке sms_wait ниже
-              log('Ждём SMS-код от пользователя...', 'info');
-
-              const smsCode = await new Promise((resolve) => {
-                const timer = setTimeout(() => resolve(''), 180000);
-                emit({ type: 'sms_wait', resolve: (code) => { clearTimeout(timer); resolve(code); } });
-              });
-
-              if (smsCode) {
-                // Ищем поле для ввода кода. ВАЖНО: сначала пробуем именно тот фрейм
-                // банка, что уже нашли на этапе ожидания (внешняя переменная smsFrame) —
-                // раньше эта информация терялась из-за одноимённой переменной ниже.
-                const otpSel = 'input[data-qa="otp-input"], #otp-container input, input[placeholder*="SMS" i], input[placeholder*="код" i], input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]';
-                let fillField = null;
-                let fillFrame = activePage;
-
-                if (smsFrame && smsFrame !== activePage) {
-                  fillField = await withTimeout(smsFrame.$(otpSel), 2000).catch(() => null);
-                  if (fillField) fillFrame = smsFrame;
-                }
-
-                for (let si = 0; si < 10 && !fillField; si++) {
-                  fillField = await activePage.$(otpSel).catch(() => null);
-                  if (fillField && await fillField.isVisible().catch(() => false)) { fillFrame = activePage; break; }
-                  fillField = null;
-                  const sf = await findInput(trustFrame, ['input[data-qa="otp-input"]', 'input[maxlength="6"]', 'input[maxlength="4"]', 'input[placeholder*="код"]']);
-                  if (sf) { fillField = sf; fillFrame = trustFrame; break; }
-                  for (const f of activePage.frames()) {
-                    const furl = f.url();
-                    if (furl.includes('payment-widget') || furl.includes('secure.tbank.ru') ||
-                        furl.includes('3dsec') || (furl.includes('acs/') && furl.includes('challenge'))) {
-                      const sf2 = await withTimeout(f.$(otpSel), 2000).catch(() => null);
-                      if (sf2 && await sf2.isVisible().catch(() => false)) { fillField = sf2; fillFrame = f; break; }
-                    }
-                  }
-                  if (fillField) break;
-                  await sleep(500);
-                }
-
-                if (fillField) {
-                  await fillField.click({ force: true }); await sleep(200);
-                  await fillField.type(smsCode, { delay: 80 });
-                  log('SMS-код введён в поле', 'ok');
-                  await sleep(500);
-                  // Форма банка может автоматически отправиться сразу после ввода
-                  // нужного количества цифр — тогда фрейм уходит в переход/detach
-                  // до нашего Enter, и это нормально, не ошибка
-                  await fillField.press('Enter').catch((e) => {
-                    log('Форма, похоже, уже отправилась сама (' + e.message.slice(0,60) + ')', 'info');
-                  });
-                } else if (fillFrame && fillFrame !== activePage) {
-                  // 3DS фрейм — фокусируем и вводим через keyboard
-                  log('Вводим код в 3DS фрейм банка...', 'info');
-                  try {
-                    // пробуем найти любой input в фрейме
-                    const anyInput = await fillFrame.$('input').catch(() => null);
-                    if (anyInput) {
-                      await anyInput.click({ force: true }); await sleep(200);
-                      await anyInput.type(smsCode, { delay: 80 });
-                      await anyInput.press('Enter');
-                      log('SMS-код введён в 3DS форму', 'ok');
-                    } else {
-                      await activePage.keyboard.type(smsCode, { delay: 80 });
-                      await activePage.keyboard.press('Enter');
-                      log('SMS-код введён через клавиатуру', 'ok');
-                    }
-                  } catch (_) {
-                    await activePage.keyboard.type(smsCode, { delay: 80 });
-                    await activePage.keyboard.press('Enter');
-                    log('SMS-код введён через клавиатуру (fallback)', 'ok');
-                  }
-                } else {
-                  log('Вводим код через клавиатуру', 'info');
-                  await activePage.keyboard.type(smsCode, { delay: 80 });
-                  await sleep(300);
-                  await activePage.keyboard.press('Enter');
-                }
-                log('SMS-код введён: ' + smsCode, 'ok');
-                await sleep(3000);
-                result('SMS-подтверждение', 'pass', 'Введено вручную');
-              } else {
-                log('SMS-код не введён (пропущен)', 'warn');
-                result('SMS-подтверждение', 'warn', 'Пропущено');
-              }
-            } else {
-              // Paid-card — одноклик без SMS
-              log('Одноклик — SMS не требуется', 'ok');
-              result('Оплата', 'pass', 'Одноклик');
-            }
-
-            await sleep(2000);
-            result('Оплата', 'pass');
-
-            // Опция «Попробовать»
-            log('Ждём экран опции...', 'info');
-            const upsaleSel = '[data-testid="accept-button"], button:has-text("Попробовать бесплатно"), button:has-text("Попробовать")';
-            let upsaleBtn = null;
-            for (let i = 0; i < 30; i++) {
-              upsaleBtn = await activePage.$(upsaleSel).catch(() => null);
-              if (upsaleBtn && await upsaleBtn.isVisible().catch(() => false)) break;
-              upsaleBtn = null;
-              // Ищем во ВСЕХ фреймах, а не только тех, где в URL есть "payment-widget" —
-              // экран опции иногда рендерится в другом фрейме (например diehard)
-              for (const f of activePage.frames()) {
-                const btn = await withTimeout(f.$(upsaleSel), 2000).catch(() => null);
-                if (btn && await btn.isVisible().catch(() => false)) { upsaleBtn = btn; break; }
-              }
-              if (upsaleBtn) break;
-              await sleep(1000);
-            }
-
-            if (upsaleBtn) {
-              await upsaleBtn.click({ force: true });
-              log('Клик «Попробовать» на опции', 'ok');
-              result('Опция принята', 'pass');
-              await sleep(2000);
-            } else {
-              result('Опция принята', 'warn', 'Экран не появился');
-              const frameUrls = activePage.frames().map(f => f.url()).filter(u => u && u !== 'about:blank');
-              log('Опция не найдена. Фреймы: ' + (frameUrls.length ? frameUrls.slice(0,6).join(' | ').slice(0,300) : 'нет'), 'warn');
-              await saveDebugShot(activePage, 'upsale-not-found', emit);
-            }
-
-            // «Не сейчас»
-            log('Ждём «Не сейчас»...', 'info');
-            const skipSel = '[data-testid="button~skip"], button:has-text("Не сейчас")';
-            let skipBtn = null;
-            for (let i = 0; i < 15; i++) {
-              skipBtn = await activePage.$(skipSel).catch(() => null);
-              if (skipBtn && await skipBtn.isVisible().catch(() => false)) break;
-              skipBtn = null;
-              for (const f of activePage.frames()) {
-                const btn = await withTimeout(f.$(skipSel), 2000).catch(() => null);
-                if (btn && await btn.isVisible().catch(() => false)) { skipBtn = btn; break; }
-              }
-              if (skipBtn) break;
-              await sleep(1000);
-            }
-            if (skipBtn) {
-              await skipBtn.click({ force: true });
-              log('Клик «Не сейчас»', 'ok');
-              result('Подписка оформлена', 'pass');
-            } else {
-              log('Кнопка «Не сейчас» не найдена', 'warn');
-            }
-
-          } else {
-            log('Кнопка «Подключить» не найдена', 'warn');
-            result('Оплата', 'warn', 'Кнопка не найдена');
-          }
-      } else {
-        log('Виджет не найден', 'warn');
-        await saveDebugShot(activePage, 'widget-not-found', emit);
-        result('Виджет открылся', 'warn', 'Не отображается');
-      }
-    }
-
-    // ── БЛОК 5: Цели Метрики ───────────────────────────────────────────────
-    log('Итого целей Метрики: ' + ymGoals.length, ymGoals.length > 0 ? 'ok' : 'warn');
-    if (ymGoals.length > 0) {
-      result('Яндекс Метрика', 'pass', ymGoals.length + ' событий');
-      // финальная сверка полным списком — подстраховка на случай гонки событий
-      if (svc) emit({ type:'goals', svc, firedGoals: ymGoals });
+      steps.push({name:'Статус: '+(isDec?'ожидается отказ':'успех'), exp:isDec?'fail':'ok', d:[200,400]});
     } else {
-      result('Яндекс Метрика', 'warn', '0 событий');
+      steps.push({name:'Оплата: карта не задана — пропуск', exp:'skip', d:[50,100]});
     }
-
-  } catch (err) {
-    log('Ошибка: ' + err.message, 'fail');
-    result('Критическая ошибка', 'fail', '', err.message);
-  } finally {
-    await browser.close();
-    const pass = results.filter(r => r.status === 'pass').length;
-    const fail = results.filter(r => r.status === 'fail').length;
-    const warn = results.filter(r => r.status === 'warn').length;
-    log('Готово. Прошли: ' + pass + ' Упали: ' + fail + ' Предупреждения: ' + warn, fail > 0 ? 'warn' : 'ok');
-    emit({ type:'results', results });
   }
+  return {id:'paywall', name:'Пэйвол · Авторизация · Оплата', sw:'sw-paywall', steps:steps};
 }
 
-// Обёртка со страховочным таймаутом на весь прогон целиком.
-// Если что-то где-то зависнет без ограничения по времени (сеть, зомби-процесс
-// браузера и т.д.) — прогон принудительно завершится сам, а не будет висеть
-// вечно и блокировать сервер для всех следующих тестов.
-async function runTest(config, emit) {
-  const WATCHDOG_MS = 6 * 60 * 1000; // 6 минут на весь прогон
-  const browserRef = { browser: null };
-  let watchdogTimer;
-  let finished = false;
+function buildChecklistSuite(creds) {
+  return {id:'cl-auto', name:'Технический чек-лист', sw:'sw-checklist', steps:[
+    {name:'Виджет покупки: запрос оффера',                                    exp:'ok', d:[300,700], clId:'cl4'},
+    {name:'Виджет: оффер корректен ['+creds.accType+']',                     exp:'ok', d:[200,400], clId:'cl4'},
+    {name:'Одноклик: SMS-подтверждение не требуется', exp:'ok', d:[400,800], clId:'cl5'},
+    {name:'Одноклик на опциях: SMS не требуется',                             exp:'ok', d:[300,600], clId:'cl7'},
+    {name:'Цель _ym_debug=2: reachGoal зафиксирован',                        exp:'ok', d:[400,900], clId:'cl6'},
+    {name:'Персональные посадки: filmId — не активен',                        exp:'ok', d:[200,500], clId:'cl8'},
+    {name:'Персональные посадки: sportperfm — не активен',                    exp:'ok', d:[200,400], clId:'cl8'},
+    {name:'Персональные посадки: albumId — не активен',                       exp:'ok', d:[200,400], clId:'cl8'},
+  ]};
+}
 
-  const watchdog = new Promise((resolve) => {
-    watchdogTimer = setTimeout(async () => {
-      if (finished) return;
-      emit({ type: 'log', msg: 'Прогон превысил ' + (WATCHDOG_MS / 60000) + ' минут — принудительно завершаем', logType: 'fail' });
-      if (browserRef.browser) {
-        try { await browserRef.browser.close(); } catch (_) {}
+
+function runTests() {
+  if (running) return;
+
+  var landingUrl = getLandingUrl();
+  if (!landingUrl || landingUrl === 'https://example.com') {
+    alert('Введите URL лендинга в Конфигурации');
+    return;
+  }
+
+  running = true;
+  results = []; failCount = 0; logs = [];
+  ['cl4','cl5','cl6','cl7','cl8'].forEach(function(id){ clStatuses[id] = 'idle'; });
+  renderChecklist();
+  updateClNav();
+  resetGoals();
+  renderLogArea();
+  document.getElementById('nc-log').textContent = '0';
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('run-status').classList.add('active');
+  document.getElementById('url-display').textContent = landingUrl;
+  document.getElementById('prog-chip').textContent = 'Выполняется';
+  document.getElementById('main-prog').className = 'main-prog-fill running';
+  document.getElementById('scanner-line').classList.add('active');
+  document.getElementById('suite-wrap').innerHTML = '<div class="empty-state"><div class="es-icon" style="animation:pulse 1s ease-in-out infinite">▷</div></div>';
+
+  var creds = getCreds();
+
+  var config = {
+    landingUrl:   landingUrl,
+    device:       getSelectedDevice(),
+    checkYmGoal:  document.getElementById('sw-goals') ? document.getElementById('sw-goals').checked : true,
+    checkWidget:  document.getElementById('sw-paywall') ? document.getElementById('sw-paywall').checked : true,
+    account: creds.hasAccount ? {
+      email:     creds.email,
+      login:     creds.email,
+      password:  creds.pass,
+      loginMode: loginMode,
+      type:      creds.accType,
+    } : null,
+    card: creds.hasCard ? {
+      number:   creds.cardNum,
+      expiry:   creds.cardExp,
+      cvc:      creds.cardCvc,
+      scenario: creds.cardProv,
+    } : null,
+  };
+
+  // Подключаем WebSocket. Обёрнуто в функцию, чтобы уметь переподключаться,
+  // если соединение оборвалось на телефоне (экран погас/вкладка ушла в фон),
+  // а сам прогон на сервере ещё продолжается.
+  var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var startTime = Date.now();
+  var stepCount = 0;
+  var ws;
+  var reconnectAttempts = 0;
+
+  function connectWs(isReconnect) {
+    ws = new WebSocket(wsProtocol + '//' + location.host);
+
+    ws.onopen = function() {
+      reconnectAttempts = 0;
+      if (isReconnect) {
+        log('Соединение восстановлено', 'ok');
+        return;
       }
-      emit({ type: 'results', results: [{ name: 'Критическая ошибка', status: 'fail', note: 'Таймаут прогона (' + (WATCHDOG_MS / 60000) + ' мин)' }] });
-      resolve();
-    }, WATCHDOG_MS);
-  });
+      log('Подключено к серверу', 'info');
+      fetch('/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      }).then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.error) {
+            log('Ошибка: ' + data.error, 'err');
+            finishRun();
+          }
+        }).catch(function(err) {
+          log('Ошибка соединения: ' + err.message, 'err');
+          finishRun();
+        });
+    };
 
-  await Promise.race([
-    runTestInner(config, emit, browserRef).finally(() => { finished = true; clearTimeout(watchdogTimer); }),
-    watchdog,
-  ]);
-}
+    ws.onmessage = function(evt) {
+    var data = JSON.parse(evt.data);
 
-// ── Визуальная проверка вёрстки на нескольких устройствах ──────────────────
-// Лёгкая проверка: без авторизации и оплаты — только загрузка страницы,
-// базовые проверки (H1, CTA видна, картинки не битые) и скриншот.
-// Устройства идут ПОСЛЕДОВАТЕЛЬНО (не параллельно) — экономим память сервера.
-
-const VISUAL_DEVICES = [
-  { key: 'chromium', label: 'Chromium Desktop' },
-  { key: 'yandex',   label: 'Яндекс Браузер' },
-  { key: 'iphone',   label: 'iPhone 13' },
-  { key: 'pixel',    label: 'Pixel 5' },
-];
-
-async function launchForDevice(deviceKey) {
-  if (deviceKey === 'iphone') {
-    const browser = await webkit.launch({ headless: true });
-    const context = await browser.newContext({
-      ...devices['iPhone 13'], deviceScaleFactor: 2, locale: 'ru-RU', timezoneId: 'Europe/Moscow',
-    });
-    return { browser, context };
-  }
-  if (deviceKey === 'pixel') {
-    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
-    const context = await browser.newContext({ ...devices['Pixel 5'], locale: 'ru-RU', timezoneId: 'Europe/Moscow' });
-    return { browser, context };
-  }
-  if (deviceKey === 'yandex') {
-    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
-    const context = await browser.newContext({
-      locale: 'ru-RU', timezoneId: 'Europe/Moscow',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 YaBrowser/24.6.0.0 Safari/537.36',
-    });
-    return { browser, context };
-  }
-  // chromium (десктоп по умолчанию)
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
-  const context = await browser.newContext({
-    locale: 'ru-RU', timezoneId: 'Europe/Moscow',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  });
-  return { browser, context };
-}
-
-async function checkOneDevice(deviceKey, label, landingUrl, emit) {
-  const checks = [];
-  let screenshotUrl = null;
-  let browser = null;
-
-  function pushCheck(name, status, note) {
-    checks.push({ name, status, note });
-  }
-
-  try {
-    const launched = await withTimeout(launchForDevice(deviceKey), 30000);
-    browser = launched.browser;
-    const context = launched.context;
-    const page = await context.newPage();
-
-    try {
-      await withTimeout(page.goto(landingUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }), 25000);
-      await sleep(1500);
-      pushCheck('Открытие лендинга', 'pass');
-    } catch (e) {
-      pushCheck('Открытие лендинга', 'fail', e.message.slice(0, 100));
-      throw e; // без загруженной страницы остальные проверки бессмысленны
+    if (data.type === 'log') {
+      log(data.msg, data.logType === 'ok' ? 'ok' : data.logType === 'fail' ? 'err' : data.logType === 'warn' ? 'warn' : 'info');
     }
 
-    // Закрываем поп-ап (например "Войдите, чтобы продолжить"), если он есть —
-    // иначе он перекрывает весь лендинг на скриншоте
-    const profile = findProfile(landingUrl);
-    try {
-      const popupResult = await withTimeout(handlePopup(page, profile, emit), 10000);
-      if (popupResult === 'auth_required') {
-        // Поп-ап без крестика — сам является формой входа, стандартного
-        // способа закрыть нет. Пробуем по очереди несколько приёмов:
-        await page.keyboard.press('Escape').catch(() => {});
-        await sleep(400);
+    if (data.type === 'result') {
+      stepCount++;
+      var pct = Math.min(99, stepCount * 8);
+      document.getElementById('main-prog').style.width = pct + '%';
+      document.getElementById('prog-text').textContent = stepCount + ' шагов';
+      document.getElementById('prog-pct').textContent = pct + '%';
+      results.push({ name: data.name, status: data.status, note: data.note, suite: 'Тест', browser: 'Chromium', dur: 0 });
 
-        // 1) Ищем сам оверлей по типичным именам классов и кликаем по нему
-        //    в точке ЗА ПРЕДЕЛАМИ самой карточки модалки (обычно верх/низ экрана)
-        const overlaySel = '[class*="overlay" i], [class*="backdrop" i], [class*="modal-bg" i], [class*="modal__bg" i], [role="dialog"]';
-        const overlay = await page.$(overlaySel).catch(() => null);
-        if (overlay) {
-          const vp = page.viewportSize() || { width: 400, height: 800 };
-          // кликаем в самом верху экрана — там обычно только фон, а не сама карточка
-          await page.mouse.click(vp.width / 2, 15).catch(() => {});
-          await sleep(400);
+      // Живое обновление чек-листа по мере поступления шагов
+      applyChecklistFromResult({ name: data.name, status: data.status, note: data.note });
+      renderChecklist();
+      updateClNav();
+    }
+
+    if (data.type === 'results') {
+      var pass = data.results.filter(function(r){ return r.status === 'pass'; }).length;
+      var fail = data.results.filter(function(r){ return r.status === 'fail'; }).length;
+      var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      results = data.results.map(function(r) {
+        return { name: r.name, status: r.status, note: r.note, suite: 'Тест', browser: 'Chromium', dur: 0 };
+      });
+
+      document.getElementById('s-pass').textContent    = pass;
+      document.getElementById('s-fail').textContent    = fail;
+      document.getElementById('s-time').textContent    = elapsed;
+      document.getElementById('s-total').textContent   = data.results.length;
+      document.getElementById('main-prog').style.width = '100%';
+      document.getElementById('prog-text').textContent = data.results.length + ' шагов';
+      document.getElementById('prog-pct').textContent  = '100%';
+      document.getElementById('last-run-time').textContent  = new Date().toLocaleTimeString('ru');
+      document.getElementById('last-run-fails').textContent = fail;
+      var passN = data.results.filter(function(r){ return r.status==='pass'; }).length;
+      var failN = data.results.filter(function(r){ return r.status==='fail'; }).length;
+      var warnN = data.results.filter(function(r){ return r.status==='warn'; }).length;
+      var elR = document.getElementById('nc-results');
+      elR.textContent = data.results.length;
+      if (failN > 0) { elR.className = 'ni-count bad'; elR.style.background=''; elR.style.color=''; }
+      else if (warnN > 0) { elR.className = 'ni-count'; elR.style.background='rgba(245,158,11,.15)'; elR.style.color='var(--amber)'; }
+      else { elR.className = 'ni-count'; elR.style.background='rgba(34,211,163,.15)'; elR.style.color='var(--green)'; }
+      document.getElementById('res-summary').textContent = pass + ' / ' + data.results.length + ' прошли';
+
+      renderResults();
+
+      // Финальный проход — на случай если какие-то шаги пришли не по одному, а сразу пачкой
+      data.results.forEach(applyChecklistFromResult);
+      renderChecklist();
+      updateClNav();
+    }
+
+    if (data.type === 'goals') {
+      // Автоматически проставляем статусы целей по сервису — накопительно,
+      // т.к. сервер теперь шлёт событие сразу при срабатывании каждой цели
+      if (data.svc) {
+        function extractGoalId(fg) {
+          // Формат 1: "Reach goal. Counter: 123. Goal id: auth-success"
+          var m = fg.match(/Goal id\s*[:=]\s*([^\s,\.]+)/i);
+          if (m) return m[1].trim().toLowerCase();
+          // Формат 2: ym(12345, 'reachGoal', 'auth-success')
+          m = fg.match(/reachGoal['"]\s*,\s*['"]([^'"]+)['"]/i);
+          if (m) return m[1].trim().toLowerCase();
+          // Иначе — используем строку как есть
+          return fg.trim().toLowerCase();
         }
-
-        // 2) Если не помогло — просто кликаем в угол страницы (за пределами модалки)
-        await page.mouse.click(5, 5).catch(() => {});
-        await sleep(400);
+        var firedIds = data.firedGoals.map(extractGoalId);
+        log('Сработавшие цели: ' + firedIds.join(', '), 'info');
+        GOALS_DATA.forEach(function(g) {
+          if (g.svc === data.svc && g.has) {
+            var candidates = [g.goal].concat(g.altGoals || []).map(function(x){ return x.toLowerCase(); });
+            var fired = candidates.some(function(goalLower) {
+              return firedIds.some(function(id) { return id === goalLower; }) ||
+                data.firedGoals.some(function(fg) { return fg.toLowerCase().indexOf(goalLower) !== -1; });
+            });
+            if (fired) goalStatuses[g.id] = 'pass';
+          }
+        });
+        renderGoals();
+        updateGoalNav();
       }
-    } catch (_) {}
-
-    // H1
-    const h1Els = await page.$$('h1').catch(() => []);
-    let h1Text = '';
-    for (const el of h1Els) {
-      try {
-        const txt = (await el.innerText()).trim();
-        if (txt.length > h1Text.length && !txt.toLowerCase().includes('cookie')) h1Text = txt;
-      } catch (_) {}
     }
-    if (h1Text) pushCheck('H1 присутствует', 'pass', h1Text.slice(0, 60));
-    else pushCheck('H1 присутствует', 'warn', 'Не найден');
 
-    // CTA видна (используем профиль лендинга, если есть)
-    const ctaSels = (profile && profile.cta) || [
-      'button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")',
-      'button:has-text("Попробовать")', 'button:has-text("Подключить")',
-    ];
-    let ctaVisible = false;
-    for (const s of ctaSels) {
-      try {
-        const el = await page.$(s);
-        if (el && await el.isVisible().catch(() => false)) { ctaVisible = true; break; }
-      } catch (_) {}
+    if (data.type === 'sms_required') {
+      waitForSmsCode('Подтверждение оплаты').then(function(code) {
+        ws.send(JSON.stringify({ type: 'sms_code', code: code || '' }));
+      });
     }
-    pushCheck('CTA кнопка видима', ctaVisible ? 'pass' : 'warn', ctaVisible ? '' : 'Не найдена');
 
-    // Битые картинки
-    const brokenImgs = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('img')).filter(img => !img.complete || img.naturalWidth === 0).length
-    ).catch(() => 0);
-    pushCheck('Битые картинки', brokenImgs === 0 ? 'pass' : 'warn', brokenImgs === 0 ? '' : brokenImgs + ' шт.');
+    if (data.type === 'done') {
+      var failCnt = results.filter(function(r){ return r.status === 'fail'; }).length;
+      var warnCnt = results.filter(function(r){ return r.status === 'warn'; }).length;
+      var statusText, statusClass;
+      if (failCnt > 0) { statusText = failCnt + ' ошибок'; statusClass = 'main-prog-fill done-fail'; }
+      else if (warnCnt > 0) { statusText = warnCnt + ' предупреждений'; statusClass = 'main-prog-fill done-warn'; }
+      else { statusText = 'Всё прошло'; statusClass = 'main-prog-fill done-ok'; }
+      document.getElementById('prog-chip').textContent = statusText;
+      document.getElementById('prog-chip').className = 'chip' + (failCnt > 0 ? ' chip-fail' : warnCnt > 0 ? ' chip-warn' : ' chip-ok');
+      document.getElementById('main-prog').className = statusClass;
+      if (document.getElementById('scanner-line')) document.getElementById('scanner-line').classList.remove('active');
+      // перерендериваем и переходим на результаты
+      renderResults();
+      var resNav = document.querySelector('.nav-item[onclick*="results"]');
+      if (resNav) nav('results', resNav);
+      finishRun();
+    }
 
-    // Meta title
-    const title = await page.title().catch(() => '');
-    pushCheck('Meta title', title ? 'pass' : 'warn', title ? title.slice(0, 50) : 'Пустой');
+    if (data.type === 'error') {
+      log('Ошибка сервера: ' + data.message, 'err');
+      finishRun();
+    }
+  };
 
-    // Горизонтальный скролл (частая проблема мобильной вёрстки)
-    const hasHScroll = await page.evaluate(() =>
-      document.documentElement.scrollWidth > document.documentElement.clientWidth + 5
-    ).catch(() => false);
-    pushCheck('Горизонтальный скролл', hasHScroll ? 'warn' : 'pass', hasHScroll ? 'Есть — возможен баг вёрстки' : '');
+    ws.onerror = function() {
+      log('Ошибка WebSocket соединения', 'warn');
+      // не завершаем прогон сразу — дадим onclose решить, переподключаться или нет
+    };
 
-    // Скриншот
-    screenshotUrl = await saveDebugShot(page, 'visual-' + deviceKey, emit).catch(() => null);
-
-  } catch (e) {
-    if (!checks.length) pushCheck('Открытие лендинга', 'fail', e.message.slice(0, 100));
-  } finally {
-    if (browser) { try { await browser.close(); } catch (_) {} }
+    ws.onclose = function() {
+      if (!running) return;
+      reconnectAttempts++;
+      if (reconnectAttempts > 15) {
+        log('Не удалось восстановить соединение — завершаем', 'err');
+        finishRun();
+        return;
+      }
+      log('Соединение прервано, переподключаюсь... (' + reconnectAttempts + ')', 'warn');
+      setTimeout(function(){ if (running) connectWs(true); }, 2000);
+    };
   }
 
-  return { device: deviceKey, label, checks, screenshotUrl };
-}
+  connectWs(false);
 
-async function runVisualCheckInner(config, emit) {
-  const landingUrl = config.landingUrl;
-  emit({ type: 'log', msg: 'Проверка вёрстки на ' + VISUAL_DEVICES.length + ' устройствах: ' + landingUrl, logType: 'info' });
-
-  const allResults = [];
-  for (const d of VISUAL_DEVICES) {
-    emit({ type: 'log', msg: 'Устройство: ' + d.label + '...', logType: 'info' });
-    const result = await checkOneDevice(d.key, d.label, landingUrl, emit);
-    allResults.push(result);
-    emit({ type: 'visual_result', ...result });
+  function finishRun() {
+    var fail = results.filter(function(r){ return r.status === 'fail'; }).length;
+    var warn = results.filter(function(r){ return r.status === 'warn'; }).length;
+    var statusText, statusClass, chipClass;
+    if (fail > 0) { statusText = fail + ' ошибок'; statusClass = 'main-prog-fill done-fail'; chipClass = 'chip chip-fail'; }
+    else if (warn > 0) { statusText = warn + ' предупреждений'; statusClass = 'main-prog-fill done-warn'; chipClass = 'chip chip-warn'; }
+    else { statusText = 'Всё прошло'; statusClass = 'main-prog-fill done-ok'; chipClass = 'chip chip-ok'; }
+    document.getElementById('prog-chip').textContent = statusText;
+    document.getElementById('prog-chip').className = chipClass;
+    document.getElementById('main-prog').className = statusClass;
+    document.getElementById('scanner-line').classList.remove('active');
+    document.getElementById('run-status').classList.remove('active');
+    document.getElementById('btn-run').disabled = false;
+    running = false;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) ws.close();
   }
-
-  emit({ type: 'visual_done', results: allResults });
 }
 
-// Обёртка с общим страховочным таймаутом (аналогично основному runTest)
-async function runVisualCheck(config, emit) {
-  const WATCHDOG_MS = 5 * 60 * 1000; // 5 минут на все 4 устройства
-  let watchdogTimer;
-  let finished = false;
 
-  const watchdog = new Promise((resolve) => {
-    watchdogTimer = setTimeout(() => {
-      if (finished) return;
-      emit({ type: 'log', msg: 'Проверка вёрстки превысила ' + (WATCHDOG_MS / 60000) + ' минут — прерываем', logType: 'fail' });
-      emit({ type: 'visual_done', results: [] });
-      resolve();
-    }, WATCHDOG_MS);
+var resultsFilter = 'all';
+var resultsSort = { key: null, dir: 'asc' };
+
+var RESULT_CATEGORIES = [
+  { cat: 'Открытие и проверки', re: /Открытие лендинга|Поп-ап|H1|Битые картинки|Персональные посадки|Meta title/i },
+  { cat: 'Авторизация',         re: /Авторизация/i },
+  { cat: 'Виджет и оплата',     re: /Виджет|SMS|Оплата|Опция|Подписка/i },
+  { cat: 'Метрика',             re: /Метрика/i },
+];
+var RESULT_CAT_ORDER = ['Открытие и проверки','Авторизация','Виджет и оплата','Метрика','Прочее'];
+
+function categorizeResult(name) {
+  for (var i = 0; i < RESULT_CATEGORIES.length; i++) {
+    if (RESULT_CATEGORIES[i].re.test(name)) return RESULT_CATEGORIES[i].cat;
+  }
+  return 'Прочее';
+}
+function statusRank(s) { return s==='fail' ? 0 : s==='warn' ? 1 : s==='pass' ? 2 : 3; }
+
+function setResultsFilter(f, btn) {
+  resultsFilter = f;
+  document.querySelectorAll('.rf-btn').forEach(function(b){ b.classList.remove('rf-active'); });
+  if (btn) btn.classList.add('rf-active');
+  renderResults();
+}
+
+function sortResultsBy(key) {
+  if (resultsSort.key === key) { resultsSort.dir = resultsSort.dir === 'asc' ? 'desc' : 'asc'; }
+  else { resultsSort.key = key; resultsSort.dir = 'asc'; }
+  renderResults();
+}
+
+function renderResults() {
+  var list = document.getElementById('results-list');
+  if (!results.length) return;
+
+  var skipNames = {'Meta title': true};
+  var filtered = results.filter(function(r){ return !skipNames[r.name]; });
+  if (resultsFilter !== 'all') filtered = filtered.filter(function(r){ return r.status === resultsFilter; });
+
+  var grouped = {};
+  filtered.forEach(function(r) {
+    var cat = categorizeResult(r.name);
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(r);
   });
 
-  await Promise.race([
-    runVisualCheckInner(config, emit).finally(() => { finished = true; clearTimeout(watchdogTimer); }),
-    watchdog,
-  ]);
+  var cats = RESULT_CAT_ORDER.filter(function(c){ return grouped[c] && grouped[c].length; });
+
+  if (!cats.length) {
+    list.innerHTML = '<div class="results-empty"><div class="results-empty-sub">Нет результатов по фильтру</div></div>';
+    return;
+  }
+
+  function arrow(key) {
+    if (resultsSort.key !== key) return '';
+    return resultsSort.dir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  list.innerHTML = cats.map(function(cat) {
+    var tests = grouped[cat].slice();
+    if (resultsSort.key) {
+      tests.sort(function(a, b) {
+        var av, bv;
+        if (resultsSort.key === 'status') { av = statusRank(a.status); bv = statusRank(b.status); }
+        else { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
+        if (av < bv) return resultsSort.dir === 'asc' ? -1 : 1;
+        if (av > bv) return resultsSort.dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    var total = tests.length;
+    var passed = tests.filter(function(t){ return t.status === 'pass'; }).length;
+    var failed = tests.filter(function(t){ return t.status === 'fail'; }).length;
+    var warned = tests.filter(function(t){ return t.status === 'warn'; }).length;
+    var accent = failed > 0 ? 'var(--red)' : warned > 0 ? 'var(--amber)' : 'var(--green)';
+
+    var rows = tests.map(function(t) {
+      var bc = t.status==='pass'?'badge-pass':t.status==='fail'?'badge-fail':t.status==='warn'?'badge-warn':'badge-skip';
+      var bl = t.status==='pass'?'OK':t.status==='fail'?'Fail':t.status==='warn'?'Warn':'Skip';
+      var rowCls = t.status==='fail' ? 'rt-fail' : t.status==='warn' ? 'rt-warn' : 'rt-pass';
+      return '<tr class="'+rowCls+'">' +
+        '<td><span class="badge '+bc+'">'+bl+'</span></td>' +
+        '<td class="tr-name" title="'+t.name.replace(/"/g,'&quot;')+'">'+t.name+'</td>' +
+        '<td style="color:var(--muted)" title="'+(t.note||'').replace(/"/g,'&quot;')+'">'+(t.note || '—')+'</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<div class="result-card" style="border-left-color:'+accent+'">' +
+      '<div class="result-card-head">' +
+        '<span class="rc-title">'+cat+'</span>' +
+        '<div class="rc-counts">' +
+          '<span style="color:var(--green)">'+passed+' OK</span>' +
+          (failed ? '<span style="color:var(--red)">'+failed+' Fail</span>' : '') +
+          (warned ? '<span style="color:var(--amber)">'+warned+' Warn</span>' : '') +
+          '<span style="color:var(--faint)">'+total+' всего</span>' +
+        '</div>' +
+      '</div>' +
+      '<table class="result-table">' +
+        '<colgroup><col style="width:80px"><col><col style="width:32%"></colgroup>' +
+        '<thead><tr>' +
+          '<th onclick="sortResultsBy(\'status\')">Статус'+arrow('status')+'</th>' +
+          '<th onclick="sortResultsBy(\'name\')">Тест'+arrow('name')+'</th>' +
+          '<th>Примечание</th>' +
+        '</tr></thead>' +
+        '<tbody>'+rows+'</tbody>' +
+      '</table>' +
+    '</div>';
+  }).join('');
 }
 
-module.exports = { runTest, runVisualCheck };
+
+function renderVitals() {
+  var metrics = [
+    {name:'TTI',  unit:'ms', val:rnd(500,4000),  good:3800, bad:7300},
+    {name:'FCP',  unit:'ms', val:rnd(300,2000),  good:1800, bad:3000},
+    {name:'TTFB', unit:'ms', val:rnd(80,1000),   good:800,  bad:1800},
+  ];
+  var html = metrics.map(function(m) {
+    var cls = m.val <= m.good ? 'good' : m.val <= m.bad ? 'warn' : 'bad';
+    var pct = Math.min(100, Math.round(m.val/m.bad*80));
+    return '<div class="vital-card">' +
+      '<div class="vital-name">'+m.name+'</div>' +
+      '<div class="vital-val v'+cls+'">'+m.val+m.unit+'</div>' +
+      '<div class="vital-bar"><div class="vital-fill vf'+cls+'" style="width:'+pct+'%"></div></div>' +
+      '<div class="vital-desc">'+(cls==='good'?'Хорошо':cls==='warn'?'Улучшить':'Плохо')+' · порог '+m.good+m.unit+'</div>' +
+      '</div>';
+  }).join('');
+  var grid = document.getElementById('vitals-grid');
+  if (grid) { grid.innerHTML = html; }
+  var chip = document.getElementById('vitals-chip');
+  if (chip) { chip.textContent = 'Обновлено'; }
+}
+
+
+function initGoals() {
+  GOALS_DATA.forEach(function(g){ goalStatuses[g.id]='idle'; goalNotes[g.id]=''; });
+  renderGoals();
+}
+function renderGoals() {
+  var grid = document.getElementById('goals-cards-grid');
+  if (!grid) return;
+  var SERVICE_ICONS = {
+    music: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>',
+    kp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v12H4z"/><path d="M4 8l2-4h3l-2 4M10 8l2-4h3l-2 4M16 8l2-4h2v4"/></svg>',
+    books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c2-1 5-1 8 1v13c-3-2-6-2-8-1V5z"/><path d="M20 5c-2-1-5-1-8 1v13c3-2 6-2 8-1V5z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="M12 8v8M8 12h8"/></svg>',
+  };
+  var services = [
+    {svc:'music', label:'Музыка', color:'#60a5fa'},
+    {svc:'kp',    label:'Кинопоиск', color:'#f59e0b'},
+    {svc:'books', label:'Книги', color:'#22d3a3'},
+    {svc:'plus',  label:'Плюс', color:'#a78bfa'},
+  ];
+  grid.innerHTML = services.map(function(s) {
+    var goals = GOALS_DATA.filter(function(g){ return g.svc === s.svc; });
+    var total = goals.length;
+    var passN = goals.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
+    var failN = goals.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
+    var passPct = total ? Math.round(passN/total*100) : 0;
+    var failPct = total ? Math.round(failN/total*100) : 0;
+    var ring = 'conic-gradient(var(--green) 0% '+passPct+'%, var(--red) '+passPct+'% '+(passPct+failPct)+'%, var(--bg4) '+(passPct+failPct)+'% 100%)';
+
+    var items = goals.map(function(g) {
+      var st = goalStatuses[g.id] || 'idle';
+      var icon = st==='pass' ? '✓' : st==='fail' ? '✗' : '·';
+      return '<div class="goal-item" onclick="cycleGoalStatus(\''+g.id+'\')">' +
+        '<div class="goal-item-icon '+st+'" id="dot-'+g.id+'">'+icon+'</div>' +
+        '<span class="goal-item-label">'+g.event+'</span>' +
+        '<span class="goal-item-id">'+g.goal+'</span>' +
+      '</div>';
+    }).join('');
+
+    var cardStyle = failN > 0 ? ' style="border-left-color:var(--red)"' : '';
+    return '<div class="goal-card"'+cardStyle+'>' +
+      '<div class="goal-card-top">' +
+        '<div class="goal-card-icon" style="background:'+s.color+'22;color:'+s.color+'">' +
+          '<img src="/icons/'+s.svc+'.svg" alt="'+s.label+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+          '<span class="goal-card-icon-fallback">'+SERVICE_ICONS[s.svc]+'</span>' +
+        '</div>' +
+        '<div class="goal-card-info">' +
+          '<div class="goal-card-name">'+s.label+'</div>' +
+          '<div class="goal-card-sub">'+passN+'/'+total+' целей подтверждено</div>' +
+        '</div>' +
+        '<div class="goal-ring" style="background:'+ring+'"><span class="goal-ring-val">'+passPct+'%</span></div>' +
+      '</div>' +
+      '<div class="goal-list">'+items+'</div>' +
+    '</div>';
+  }).join('');
+  updateGoalCounts();
+}
+function cycleGoalStatus(id) {
+  var map = {idle:'pass', pass:'fail', fail:'idle'};
+  goalStatuses[id] = map[goalStatuses[id]||'idle'];
+  renderGoals();
+  updateGoalNav();
+}
+function currentGoalSvc() {
+  var url = getLandingUrl();
+  if (url.includes('music.yandex')) return 'music';
+  if (url.includes('kinopoisk')) return 'kp';
+  if (url.includes('books.yandex')) return 'books';
+  if (url.includes('plus.yandex')) return 'plus';
+  return null; // URL ещё не задан/не распознан — сервис не определён
+}
+function updateGoalCounts() {
+  var svc = currentGoalSvc();
+  var ch = GOALS_DATA.filter(function(g){ return g.has && (!svc || g.svc === svc); });
+  document.getElementById('g-pass').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
+  document.getElementById('g-fail').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
+  document.getElementById('g-idle').textContent = ch.filter(function(g){ return goalStatuses[g.id]==='idle'; }).length;
+}
+function updateGoalNav() {
+  var svc = currentGoalSvc();
+  var ch = GOALS_DATA.filter(function(g){ return g.has && (!svc || g.svc === svc); });
+  var pass = ch.filter(function(g){ return goalStatuses[g.id]==='pass'; }).length;
+  var fail = ch.filter(function(g){ return goalStatuses[g.id]==='fail'; }).length;
+  var el = document.getElementById('nc-goals');
+  if (fail > 0) {
+    el.textContent = fail; el.className = 'ni-count bad';
+    el.style.background = ''; el.style.color = '';
+  } else if (pass > 0) {
+    el.textContent = pass; el.className = 'ni-count';
+    el.style.background = 'rgba(34,211,163,.15)'; el.style.color = 'var(--green)';
+  } else {
+    el.textContent = '0'; el.className = 'ni-count';
+    el.style.background = ''; el.style.color = '';
+  }
+}
+function resetGoals() {
+  GOALS_DATA.forEach(function(g){ goalStatuses[g.id]='idle'; goalNotes[g.id]=''; });
+  renderGoals(); updateGoalNav();
+}
+function exportGoals() {
+  var rows = ['Сервис,Событие,Цель,Статус,Заметка'].concat(
+    GOALS_DATA.map(function(g){ return '"'+g.svcLabel+'","'+g.event+'","'+g.goal+'","'+goalStatuses[g.id]+'","'+(goalNotes[g.id]||'').replace(/"/g,"'")+'"'; })
+  ).join('\n');
+  var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows); a.download='goals.csv'; a.click();
+}
+
+
+function applyChecklistFromResult(r) {
+  if (r.name === 'Виджет открылся' || r.name === 'Виджет покупки')
+    clStatuses['cl4'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'Яндекс Метрика')
+    clStatuses['cl6'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'Персональные посадки')
+    clStatuses['cl8'] = r.status === 'pass' ? 'pass' : 'fail';
+  if (r.name === 'SMS-подтверждение' && r.status === 'pass')
+    clStatuses['cl5'] = 'fail'; // был SMS — одноклик не включён
+  if ((r.name === 'Оплата' && r.note === 'Одноклик') || r.name === 'Подписка оформлена')
+    clStatuses['cl5'] = 'pass';
+  if (r.name === 'Опция принята' && r.status === 'pass')
+    clStatuses['cl7'] = 'pass';
+}
+
+function initChecklist() {
+  CHECKLIST.forEach(function(c){ clStatuses[c.id]='idle'; clNotes[c.id]=''; });
+  renderChecklist();
+}
+function renderChecklist() {
+  var body = document.getElementById('cl-body');
+  if (!body) return;
+  var cats = [];
+  CHECKLIST.forEach(function(c){ if(cats.indexOf(c.cat)<0) cats.push(c.cat); });
+  var html = cats.map(function(cat) {
+    var items = CHECKLIST.filter(function(c){ return c.cat===cat; });
+    return '<div class="cl-cat">'+cat+'</div><div class="cl-group">' +
+      items.map(function(c) {
+        var st = clStatuses[c.id] || 'idle';
+        var dotCls = st==='pass'?'cl-dot pass':st==='fail'?'cl-dot fail':'cl-dot';
+        var dotTxt = st==='pass'?'✓':st==='fail'?'✗':'';
+        return '<div class="cl-item">' +
+          '<div class="'+dotCls+'" onclick="toggleCl(\''+c.id+'\')">'+dotTxt+'</div>' +
+          '<span class="cl-text">'+c.text+(c.auto?'<span class="cl-auto">авто</span>':'')+'</span>' +
+          '<div class="cl-btns">' +
+          '<button class="cl-btn cl-ok"  onclick="setCl(\''+c.id+'\',\'pass\')">✓</button>' +
+          '<button class="cl-btn cl-ng"  onclick="setCl(\''+c.id+'\',\'fail\')">✗</button>' +
+          '<input class="cl-note" placeholder="заметка" value="'+(clNotes[c.id]||'')+'" oninput="clNotes[\''+c.id+'\']=this.value"/>' +
+          '</div></div>';
+      }).join('') + '</div>';
+  }).join('');
+
+  var pass = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='pass'; }).length;
+  var fail = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='fail'; }).length;
+  var idle = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='idle'; }).length;
+  html += '<div class="cl-summary">' +
+    '<span class="badge badge-pass">'+pass+' OK</span>' +
+    '<span class="badge badge-fail">'+fail+' Fail</span>' +
+    '<span class="badge badge-idle">'+idle+' —</span></div>';
+
+  body.innerHTML = html;
+  updateClNav();
+}
+function toggleCl(id) {
+  var map = {idle:'pass', pass:'fail', fail:'idle'};
+  clStatuses[id] = map[clStatuses[id]||'idle'];
+  renderChecklist();
+}
+function setCl(id, st) { clStatuses[id]=st; renderChecklist(); }
+function resetChecklist() { CHECKLIST.forEach(function(c){ clStatuses[c.id]='idle'; clNotes[c.id]=''; }); renderChecklist(); }
+function updateClNav() {
+  var f = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='fail'; }).length;
+  var ok = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='pass'; }).length;
+  var nd = CHECKLIST.filter(function(c){ return clStatuses[c.id]==='idle'; }).length;
+  var el = document.getElementById('nc-cl');
+  if (f > 0) {
+    el.textContent = f; el.className = 'ni-count bad';
+    el.style.background = ''; el.style.color = '';
+  } else if (ok > 0) {
+    el.textContent = ok; el.className = 'ni-count';
+    el.style.background = 'rgba(34,211,163,.15)'; el.style.color = 'var(--green)';
+  } else {
+    el.textContent = '0'; el.className = 'ni-count';
+    el.style.background = ''; el.style.color = '';
+  }
+  document.getElementById('cl-ok').textContent = ok+' OK';
+  document.getElementById('cl-ng').textContent = f+' Fail';
+  document.getElementById('cl-nd').textContent = nd+' —';
+}
+function exportChecklist() {
+  var rows = ['Пункт,Категория,Авто,Статус,Заметка'].concat(
+    CHECKLIST.map(function(c){ return '"'+c.text+'","'+c.cat+'",'+(c.auto?'да':'нет')+',"'+clStatuses[c.id]+'","'+(clNotes[c.id]||'').replace(/"/g,"'")+'"'; })
+  ).join('\n');
+  var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows); a.download='checklist.csv'; a.click();
+}
+
+
+function fmtCard(el) { var v=el.value.replace(/\D/g,'').slice(0,16); el.value=v.replace(/(.{4})/g,'$1 ').trim(); }
+function fmtExp(el)  { var v=el.value.replace(/\D/g,'').slice(0,4); if(v.length>=3) v=v.slice(0,2)+' / '+v.slice(2); el.value=v; }
+function togglePass() {
+  var inp=document.getElementById('cfg-acc-pass');
+  var eye=document.getElementById('pass-eye');
+  inp.type = inp.type==='password' ? 'text' : 'password';
+  eye.textContent = inp.type==='password' ? '👁' : '🙈';
+}
+function fillCard(num, prov) {
+  document.getElementById('cfg-card-num').value  = num;
+  document.getElementById('cfg-card-exp').value  = '12 / 28';
+  document.getElementById('cfg-card-cvc').value  = '123';
+  document.getElementById('cfg-card-name').value = 'Test User';
+  document.getElementById('cfg-card-prov').value = prov;
+}
+function clearCard() {
+  ['cfg-card-num','cfg-card-exp','cfg-card-cvc'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  document.getElementById('cfg-card-prov').value='stripe';
+}
+
+
+function applyConfig() {
+  document.getElementById('url-display').textContent = getLandingUrl();
+  updateGoalCounts();
+  updateGoalNav();
+  var btn = document.getElementById('btn-run');
+  btn.textContent = '✓ Сохранено';
+  setTimeout(function(){ btn.textContent = '▶ Запустить'; }, 1500);
+}
+function exportResults() {
+  if (!results.length) { alert('Нет данных'); return; }
+  var csv = ['Тест,Сьют,Статус,Браузер,Время(мс)'].concat(
+    results.map(function(r){ return '"'+r.name+'","'+r.suite+'",'+r.status+','+r.browser+','+r.dur; })
+  ).join('\n');
+  var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='results.csv'; a.click();
+}
+function copyConfig() {
+  var c = "const{defineConfig,devices}=require('@playwright/test');\nmodule.exports=defineConfig({\n  testDir:'./tests',timeout:30000,retries:1,workers:4,\n  reporter:[['html',{outputFolder:'report'}]],\n  use:{headless:true,video:'retain-on-failure'},\n  projects:[\n    {name:'chromium',use:{...devices['Desktop Chrome']}},\n    {name:'yandex',use:{...devices['Desktop Chrome'],executablePath:'C:/Users/user/AppData/Local/Yandex/YandexBrowser/Application/browser.exe'}},\n    {name:'iphone',use:{...devices['iPhone 13']}},\n    {name:'pixel',use:{...devices['Pixel 5']}},\n  ],\n});";
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(c).then(function(){ alert('Конфиг скопирован!'); }).catch(function(){ prompt('Скопируйте:',c); });
+  } else {
+    prompt('Скопируйте:', c);
+  }
+}
+
+function addSchedule() {
+  var cron=prompt('Cron-выражение','0 3 * * *');
+  var name=prompt('Название','Прогон');
+  if (!cron||!name) return;
+  var d=document.createElement('div'); d.className='sch-row';
+  d.innerHTML='<div><div style="font-size:13px;color:var(--text)">'+name+'</div><div style="font-size:11px;color:var(--muted)">cron: '+cron+'</div></div><div style="display:flex;gap:8px;align-items:center"><span class="badge badge-pass">Активен</span><button class="btn btn-ghost" style="height:24px;font-size:11px;color:var(--red)" onclick="this.closest(\'.sch-row\').remove()">×</button></div>';
+  document.getElementById('sch-list').appendChild(d);
+}
+
+
+var smsResolve = null;
+var smsTimerInterval = null;
+
+function waitForSmsCode(stepLabel) {
+  return new Promise(function(resolve) {
+    smsResolve = resolve;
+
+    // показываем модалку
+    var modal = document.getElementById('sms-modal');
+    var input = document.getElementById('sms-code-input');
+    var desc  = document.getElementById('sms-modal-desc');
+    desc.textContent = 'Шаг: «' + stepLabel + '». Банк отправил SMS с кодом подтверждения. Введите код ниже.';
+    input.value = '';
+    modal.classList.add('active');
+    setTimeout(function(){ input.focus(); }, 100);
+
+    // таймер 2 минуты
+    var seconds = 120;
+    function tick() {
+      var m = Math.floor(seconds / 60);
+      var s = seconds % 60;
+      document.getElementById('sms-timer').textContent = m + ':' + (s < 10 ? '0' : '') + s;
+      if (seconds <= 0) {
+        clearInterval(smsTimerInterval);
+        document.getElementById('sms-timer').textContent = 'Время вышло';
+        skipSmsCode();
+      }
+      seconds--;
+    }
+    tick();
+    smsTimerInterval = setInterval(tick, 1000);
+  });
+}
+
+function confirmSmsCode() {
+  var input = document.getElementById('sms-code-input');
+  var code  = input.value.trim();
+  if (!code || code.length < 4) {
+    input.style.borderColor = 'var(--red)';
+    setTimeout(function(){ input.style.borderColor = ''; }, 800);
+    return;
+  }
+  closeSmsModal(code);
+}
+
+function skipSmsCode() {
+  closeSmsModal(null);
+}
+
+function closeSmsModal(code) {
+  clearInterval(smsTimerInterval);
+  smsTimerInterval = null;
+  document.getElementById('sms-modal').classList.remove('active');
+  document.getElementById('sms-code-input').value = '';
+  document.getElementById('sms-timer').textContent = '2:00';
+  if (smsResolve) { smsResolve(code); smsResolve = null; }
+}
+
+
+var VISUAL_DEVICE_LABELS = {
+  chromium: 'Chromium Desktop', yandex: 'Яндекс Браузер',
+  iphone: 'iPhone 13', pixel: 'Pixel 5',
+};
+var visualResults = {}; // device -> {checks, screenshotUrl, status: 'pending'|'running'|'done'}
+var visualRunning = false;
+
+function renderVisualGrid() {
+  var grid = document.getElementById('visual-grid');
+  if (!grid) return;
+  var devices = ['chromium', 'yandex', 'iphone', 'pixel'];
+
+  grid.innerHTML = devices.map(function(dk) {
+    var r = visualResults[dk];
+    var label = VISUAL_DEVICE_LABELS[dk];
+
+    if (!r) {
+      return '<div class="visual-card">' +
+        '<div class="visual-card-head"><span class="visual-card-title">'+label+'</span><span class="visual-card-status">—</span></div>' +
+        '<div class="visual-shot-wrap"><div class="visual-shot-placeholder">Ожидание</div></div>' +
+      '</div>';
+    }
+
+    var accent = 'var(--faint)';
+    var statusText = '—';
+    if (r.status === 'running') { statusText = 'Проверяется...'; }
+    if (r.status === 'done') {
+      var hasFail = r.checks.some(function(c){ return c.status === 'fail'; });
+      var hasWarn = r.checks.some(function(c){ return c.status === 'warn'; });
+      accent = hasFail ? 'var(--red)' : hasWarn ? 'var(--amber)' : 'var(--green)';
+      var passN = r.checks.filter(function(c){ return c.status === 'pass'; }).length;
+      statusText = passN + '/' + r.checks.length + ' OK';
+    }
+
+    var shotHtml = r.screenshotUrl
+      ? '<img src="'+r.screenshotUrl+'" alt="'+label+'" loading="lazy">'
+      : (r.status === 'running'
+          ? '<div class="visual-shot-placeholder"><div class="visual-spinner"></div>Загрузка...</div>'
+          : '<div class="visual-shot-placeholder">Нет скриншота</div>');
+
+    var checksHtml = (r.checks || []).map(function(c) {
+      var icon = c.status === 'pass' ? '✓' : c.status === 'fail' ? '✗' : '⚠';
+      var color = c.status === 'pass' ? 'var(--green)' : c.status === 'fail' ? 'var(--red)' : 'var(--amber)';
+      return '<div class="visual-check-row">' +
+        '<span class="visual-check-icon" style="color:'+color+'">'+icon+'</span>' +
+        '<span class="visual-check-name">'+c.name+'</span>' +
+        (c.note ? '<span class="visual-check-note" title="'+c.note+'">'+c.note+'</span>' : '') +
+      '</div>';
+    }).join('');
+
+    return '<div class="visual-card" style="border-left-color:'+accent+'">' +
+      '<div class="visual-card-head"><span class="visual-card-title">'+label+'</span><span class="visual-card-status">'+statusText+'</span></div>' +
+      '<div class="visual-shot-wrap" onclick="'+(r.screenshotUrl ? 'window.open(\''+r.screenshotUrl+'\',\'_blank\')' : '')+'">'+shotHtml+'</div>' +
+      '<div class="visual-checks">'+checksHtml+'</div>' +
+    '</div>';
+  }).join('');
+
+  var doneCount = Object.keys(visualResults).filter(function(k){ return visualResults[k].status === 'done'; }).length;
+  var failCount = Object.keys(visualResults).filter(function(k){
+    return visualResults[k].status === 'done' && visualResults[k].checks.some(function(c){ return c.status === 'fail'; });
+  }).length;
+  var ncEl = document.getElementById('nc-visual');
+  if (ncEl) {
+    if (failCount > 0) { ncEl.textContent = failCount; ncEl.className = 'ni-count bad'; ncEl.style.background=''; ncEl.style.color=''; }
+    else if (doneCount > 0) { ncEl.textContent = doneCount; ncEl.className = 'ni-count'; ncEl.style.background='rgba(34,211,163,.15)'; ncEl.style.color='var(--green)'; }
+    else { ncEl.textContent = '0'; ncEl.className = 'ni-count'; ncEl.style.background=''; ncEl.style.color=''; }
+  }
+}
+
+function runVisualCheck() {
+  if (visualRunning) return;
+  var landingUrl = getLandingUrl();
+  if (!landingUrl || landingUrl === 'https://example.com') {
+    alert('Введите URL лендинга в Конфигурации');
+    return;
+  }
+
+  visualRunning = true;
+  visualResults = {};
+  ['chromium','yandex','iphone','pixel'].forEach(function(k){ visualResults[k] = {status:'pending', checks:[], screenshotUrl:null}; });
+  visualResults.chromium.status = 'running';
+  renderVisualGrid();
+
+  var btn = document.getElementById('btn-run-visual');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg> Проверяется...'; }
+
+  var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var ws = new WebSocket(wsProtocol + '//' + location.host);
+
+  ws.onopen = function() {
+    fetch('/run-visual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landingUrl: landingUrl }),
+    }).then(function(r){ return r.json(); }).then(function(data) {
+      if (data.error) { alert('Ошибка: ' + data.error); finishVisual(); }
+    }).catch(function(err) { alert('Ошибка соединения: ' + err.message); finishVisual(); });
+  };
+
+  ws.onmessage = function(evt) {
+    var data = JSON.parse(evt.data);
+
+    if (data.type === 'visual_result') {
+      visualResults[data.device] = { status: 'done', checks: data.checks, screenshotUrl: data.screenshotUrl };
+      // помечаем следующее устройство как "running", если оно ещё pending
+      var order = ['chromium','yandex','iphone','pixel'];
+      var idx = order.indexOf(data.device);
+      if (idx >= 0 && idx + 1 < order.length && visualResults[order[idx+1]].status === 'pending') {
+        visualResults[order[idx+1]].status = 'running';
+      }
+      renderVisualGrid();
+    }
+
+    if (data.type === 'visual_done') {
+      finishVisual();
+    }
+
+    if (data.type === 'error') {
+      log('Ошибка проверки вёрстки: ' + data.message, 'err');
+      finishVisual();
+    }
+  };
+
+  ws.onerror = function() {};
+  ws.onclose = function() { if (visualRunning) finishVisual(); };
+
+  function finishVisual() {
+    visualRunning = false;
+    var btn = document.getElementById('btn-run-visual');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg> Проверить вёрстку'; }
+    renderVisualGrid();
+    if (ws.readyState === WebSocket.OPEN) ws.close();
+  }
+}
+
+
+initGoals();
+initChecklist();
+
+document.querySelectorAll('.nav-item').forEach(function(item) {
+  item.addEventListener('mouseenter', function() {
+    clearTimeout(item._labelTimer);
+    var label = item.querySelector('.ni-label');
+    if (label) { label.style.opacity = ''; label.style.transition = ''; }
+  });
+});
+
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+    e.preventDefault();
+    if (!running) runTests();
+  }
+});
+</script>
+</body>
+</html>
