@@ -106,13 +106,18 @@ async function handlePopup(page, profile, emit) {
 }
 
 // ── Авторизация через Яндекс Паспорт ───────────────────────────────────────
-async function doYandexAuth(page, config, profile, results, emit) {
+async function doYandexAuth(page, config, profile, results, emit, skipLoginStep) {
   function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
 
   try {
     await page.waitForURL('**/passport.yandex**', { timeout: 8000 }).catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await sleep(300);
+
+    // Если email/логин уже был отправлен ДО перехода на passport (например,
+    // через отдельную форму на самом лендинге, как у некоторых Кинопоиск-лендингов) —
+    // пропускаем весь этот блок и сразу переходим к экрану пароля ниже.
+    if (!skipLoginStep) {
 
     // кликаем «Ещё» → «Войти по логину»
     const moreSels = ['[data-testid="split-add-user-more-button"]','button:has-text("Ещё")','a:has-text("Ещё")'];
@@ -227,6 +232,8 @@ async function doYandexAuth(page, config, profile, results, emit) {
       log('Похоже, экран логина не сменился — пробуем клик «Войти» повторно', 'warn');
       await clickNextLogin();
     }
+
+    } // конец блока if (!skipLoginStep)
 
     // пароль — даём странице время отрисоваться, пробуем несколько раз вместо одной попытки
     let passField = null;
@@ -469,6 +476,49 @@ async function runTestInner(config, emit, browserRef) {
     if (config.account && config.account.email && config.account.password) {
       log('Начинаем авторизацию...', 'info');
 
+      // Некоторые лендинги (например часть Кинопоиска) показывают форму
+      // входа с переключателем Телефон/Почта сразу на странице, без всякой
+      // CTA-кнопки. Если в профиле есть emailToggle и он реально виден —
+      // используем эту форму напрямую, минуя поиск CTA и попапа.
+      let usedInlineEmailForm = false;
+      const emailToggleSel = profile && profile.emailToggle;
+      if (emailToggleSel) {
+        const toggleEl = await page.$(emailToggleSel).catch(() => null);
+        if (toggleEl && await toggleEl.isVisible().catch(() => false)) {
+          usedInlineEmailForm = true;
+          log('Форма email найдена прямо на лендинге — используем её напрямую', 'info');
+          await toggleEl.click().catch(() => {});
+          await sleep(500);
+
+          const emailFieldSel = sel(profile, 'emailField', 'input[name="email"]', config.selectors);
+          const emailEl = await page.$(emailFieldSel).catch(() => null);
+          const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
+          if (emailEl) {
+            await emailEl.click(); await sleep(200);
+            await emailEl.fill(credential);
+            log('Email введён: ' + credential, 'ok');
+          } else {
+            log('Поле email не найдено на встроенной форме', 'warn');
+          }
+
+          const loginBtnSel = sel(profile, 'loginBtn', 'button.login__button', config.selectors);
+          const loginBtnEl = await page.$(loginBtnSel).catch(() => null);
+          if (loginBtnEl) {
+            await loginBtnEl.click().catch(() => {});
+            log('Клик «Войти» на встроенной форме', 'ok');
+          } else {
+            log('Кнопка «Войти» встроенной формы не найдена', 'warn');
+          }
+
+          await sleep(2000);
+          // Дальше — переход на passport.yandex.ru и стандартный экран пароля,
+          // который уже отлажен для Музыки. skipLoginStep=true, чтобы не пытаться
+          // ещё раз пройти «Ещё → Войти по логину» — email уже отправлен выше.
+          await doYandexAuth(page, config, profile, results, emit, true);
+        }
+      }
+
+      if (!usedInlineEmailForm) {
       // CTA кнопка
       const ctaSels = (profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
@@ -589,6 +639,7 @@ async function runTestInner(config, emit, browserRef) {
       }
 
       await doYandexAuth(page, config, profile, results, emit);
+      } // конец блока if (!usedInlineEmailForm)
     }
 
     // H1
