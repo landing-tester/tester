@@ -81,6 +81,7 @@ module.exports = [
     connectBtn: '[data-testid="trust-card-form-submit-button"]',
     noH1: true,
     noCta: true,
+    giftLanding: true,
     personalLanding: false,
   },
 
