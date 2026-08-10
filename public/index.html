@@ -631,17 +631,17 @@ var BROWSERS = ['Chromium','Яндекс','iPhone','Pixel'];
 
 var GOALS_DATA = [
   {id:'m1',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m2',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
-  {id:'m3',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная оплата',goal:'PaymentCompleted',has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m2',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Открытие виджета',goal:'click-purchased-main',altGoals:['click-promocode'],has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
+  {id:'m3',svc:'music',svcLabel:'Музыка',emoji:'🎵',event:'Успешная оплата',goal:'PaymentCompleted',altGoals:['promocode-activated','promocode_purch_tarif'],has:true,url:'https://music.yandex.ru/promo/lt-pay-promo/?get-plus=4'},
   {id:'k1',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная авторизация',goal:'AUTH_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k2',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
-  {id:'k3',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная оплата',goal:'PLUS_PURCHASE_SUCCESS',has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k2',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Открытие виджета',goal:'click-purchased-main',altGoals:['click-promocode'],has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
+  {id:'k3',svc:'kp',svcLabel:'Кинопоиск',emoji:'🎬',event:'Успешная оплата',goal:'PLUS_PURCHASE_SUCCESS',altGoals:['promocode-activated','promocode_purch_tarif'],has:true,url:'https://www.kinopoisk.ru/special/perf/?type=takemyruble3'},
   {id:'b1',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная авторизация',goal:'auth-success',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b2',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Открытие виджета',goal:'click-purchased-main',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
-  {id:'b3',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная оплата',goal:'PaywallScreen.Widget.PaymentSuccess',has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b2',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Открытие виджета',goal:'click-purchased-main',altGoals:['click-promocode'],has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
+  {id:'b3',svc:'books',svcLabel:'Книги',emoji:'📚',event:'Успешная оплата',goal:'PaywallScreen.Widget.PaymentSuccess',altGoals:['promocode-activated','promocode_purch_tarif'],has:true,url:'https://books.yandex.ru/yandexpromo/bestoffer/?type=paywall'},
   {id:'p1',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная авторизация',goal:'auth_success',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
-  {id:'p2',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Открытие виджета',goal:'CTA_click_growth',has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
-  {id:'p3',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная оплата',goal:'pluslandingpaymentsucess',altGoals:['lpcpluslandingpaymentsucess','CTA_tariff_buy'],has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p2',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Открытие виджета',goal:'CTA_click_growth',altGoals:['click-promocode'],has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
+  {id:'p3',svc:'plus',svcLabel:'Плюс',emoji:'➕',event:'Успешная оплата',goal:'pluslandingpaymentsucess',altGoals:['lpcpluslandingpaymentsucess','CTA_tariff_buy','promocode-activated','promocode_purch_tarif'],has:true,url:'https://plus.yandex.ru/action/scroll-widget'},
 ];
 
 // Чек-лист из PDF
@@ -1489,6 +1489,8 @@ function applyChecklistFromResult(r) {
     clStatuses['cl5'] = 'pass';
   if (r.name === 'Опция принята' && r.status === 'pass')
     clStatuses['cl7'] = 'pass';
+  if (r.name === 'Одноклик на опции' && r.status === 'fail')
+    clStatuses['cl7'] = 'fail';
 }
 
 function initChecklist() {
