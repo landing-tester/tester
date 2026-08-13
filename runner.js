@@ -1237,7 +1237,8 @@ async function launchForDevice(deviceKey) {
   return { browser, context };
 }
 
-async function checkOneDevice(deviceKey, label, landingUrl, emit) {
+async function checkOneDevice(deviceKey, label, config, emit) {
+  const landingUrl = config.landingUrl;
   const checks = [];
   let screenshotUrl = null;
   let browser = null;
@@ -1261,29 +1262,83 @@ async function checkOneDevice(deviceKey, label, landingUrl, emit) {
       throw e; // без загруженной страницы остальные проверки бессмысленны
     }
 
-    // Закрываем поп-ап (например "Войдите, чтобы продолжить"), если он есть —
-    // иначе он перекрывает весь лендинг на скриншоте
     const profile = findProfile(landingUrl);
+
+    if (config.account && config.account.email && config.account.password) {
+      // Логинимся, чтобы скриншот показывал лендинг в залогиненном виде,
+      // а не экран "Войдите, чтобы продолжить" поверх всего
+      try {
+        emit({ type: 'log', msg: '[' + label + '] Авторизация перед скриншотом...', logType: 'info' });
+
+        let usedInlineEmailForm = false;
+        const emailToggleSel = profile && profile.emailToggle;
+        if (emailToggleSel) {
+          const toggleEl = await page.$(emailToggleSel).catch(() => null);
+          if (toggleEl && await toggleEl.isVisible().catch(() => false)) {
+            usedInlineEmailForm = true;
+            await toggleEl.click().catch(() => {});
+            await sleep(500);
+            const emailFieldSel = sel(profile, 'emailField', 'input[name="email"]', config.selectors);
+            const emailEl = await page.$(emailFieldSel).catch(() => null);
+            const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
+            if (emailEl) { await emailEl.click(); await sleep(200); await emailEl.fill(credential); }
+            const loginBtnSel = sel(profile, 'loginBtn', 'button.login__button', config.selectors);
+            const loginBtnEl = await page.$(loginBtnSel).catch(() => null);
+            if (loginBtnEl) await loginBtnEl.click().catch(() => {});
+            await sleep(2000);
+            await doYandexAuth(page, config, profile, [], emit, true);
+          }
+        }
+
+        if (!usedInlineEmailForm) {
+          const popupResult = await withTimeout(handlePopup(page, profile, emit), 10000).catch(() => 'none');
+          if (popupResult === 'auth_required') {
+            const popupLoginSel = sel(profile, 'popupLogin', 'div.sign-in__button', config.selectors);
+            const loginBtn = await page.$(popupLoginSel).catch(() => null);
+            if (loginBtn && await loginBtn.isVisible().catch(() => false)) {
+              await loginBtn.click().catch(() => {});
+              await sleep(1500);
+            }
+          } else {
+            const ctaSels = (profile && profile.cta) || ['button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")'];
+            for (const s of ctaSels) {
+              const el = await page.$(s).catch(() => null);
+              if (el) {
+                await el.scrollIntoViewIfNeeded().catch(() => {});
+                const box = await el.boundingBox().catch(() => null);
+                if (box && box.width > 0) {
+                  await el.click({ timeout: 5000 }).catch(() => page.mouse.click(box.x + box.width/2, box.y + box.height/2).catch(() => {}));
+                  await sleep(2000);
+                  break;
+                }
+              }
+            }
+          }
+          await doYandexAuth(page, config, profile, [], emit);
+        }
+
+        pushCheck('Авторизация', 'pass');
+      } catch (e) {
+        pushCheck('Авторизация', 'warn', e.message.slice(0, 80));
+      }
+      await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+      await sleep(1000);
+    }
+
+    // На случай если поп-ап всё же остался (например авторизация не была
+    // настроена или не удалась) — пробуем закрыть его как раньше
     try {
-      const popupResult = await withTimeout(handlePopup(page, profile, emit), 10000);
-      if (popupResult === 'auth_required') {
-        // Поп-ап без крестика — сам является формой входа, стандартного
-        // способа закрыть нет. Пробуем по очереди несколько приёмов:
+      const popupResult2 = await withTimeout(handlePopup(page, profile, emit), 8000).catch(() => 'none');
+      if (popupResult2 === 'auth_required') {
         await page.keyboard.press('Escape').catch(() => {});
         await sleep(400);
-
-        // 1) Ищем сам оверлей по типичным именам классов и кликаем по нему
-        //    в точке ЗА ПРЕДЕЛАМИ самой карточки модалки (обычно верх/низ экрана)
         const overlaySel = '[class*="overlay" i], [class*="backdrop" i], [class*="modal-bg" i], [class*="modal__bg" i], [role="dialog"]';
         const overlay = await page.$(overlaySel).catch(() => null);
         if (overlay) {
           const vp = page.viewportSize() || { width: 400, height: 800 };
-          // кликаем в самом верху экрана — там обычно только фон, а не сама карточка
           await page.mouse.click(vp.width / 2, 15).catch(() => {});
           await sleep(400);
         }
-
-        // 2) Если не помогло — просто кликаем в угол страницы (за пределами модалки)
         await page.mouse.click(5, 5).catch(() => {});
         await sleep(400);
       }
@@ -1350,7 +1405,7 @@ async function runVisualCheckInner(config, emit) {
   const allResults = [];
   for (const d of VISUAL_DEVICES) {
     emit({ type: 'log', msg: 'Устройство: ' + d.label + '...', logType: 'info' });
-    const result = await checkOneDevice(d.key, d.label, landingUrl, emit);
+    const result = await checkOneDevice(d.key, d.label, config, emit);
     allResults.push(result);
     emit({ type: 'visual_result', ...result });
   }
