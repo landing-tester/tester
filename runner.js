@@ -1201,36 +1201,55 @@ async function runTest(config, emit) {
 // Устройства идут ПОСЛЕДОВАТЕЛЬНО (не параллельно) — экономим память сервера.
 
 const VISUAL_DEVICES = [
-  { key: 'chromium', label: 'Chromium Desktop' },
-  { key: 'yandex',   label: 'Яндекс Браузер' },
-  { key: 'iphone',   label: 'iPhone 13' },
-  { key: 'pixel',    label: 'Pixel 5' },
+  { key: 'desktop_1920', label: 'Десктоп 1920×1080' },
+  { key: 'desktop_1536', label: 'Десктоп 1536×864' },
+  { key: 'mobile_414', label: 'Мобильный 414×896' },
+  { key: 'mobile_360', label: 'Мобильный 360×800' },
 ];
 
 async function launchForDevice(deviceKey) {
-  if (deviceKey === 'iphone') {
+  if (deviceKey === 'mobile_414') {
+    // 414×896 — размер экрана типичен и для части iPhone (11/XR), и для
+    // многих Android-флагманов, поэтому берём WebKit как более строгий движок
     const browser = await webkit.launch({ headless: true });
     const context = await browser.newContext({
-      ...devices['iPhone 13'], deviceScaleFactor: 2, locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+      viewport: { width: 414, height: 896 },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+      locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
     });
     return { browser, context };
   }
-  if (deviceKey === 'pixel') {
-    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
-    const context = await browser.newContext({ ...devices['Pixel 5'], locale: 'ru-RU', timezoneId: 'Europe/Moscow' });
-    return { browser, context };
-  }
-  if (deviceKey === 'yandex') {
+  if (deviceKey === 'mobile_360') {
+    // 360×800 — самое массовое мобильное разрешение (бюджетные и средние Android)
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
     const context = await browser.newContext({
+      viewport: { width: 360, height: 800 },
+      deviceScaleFactor: 3,
+      isMobile: true,
+      hasTouch: true,
       locale: 'ru-RU', timezoneId: 'Europe/Moscow',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 YaBrowser/24.6.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
     });
     return { browser, context };
   }
-  // chromium (десктоп по умолчанию)
+  if (deviceKey === 'desktop_1536') {
+    // 1536×864 — масштабированный 1920×1080 при 125% в Windows,
+    // сейчас третье по популярности "эффективное" десктопное разрешение
+    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+    const context = await browser.newContext({
+      viewport: { width: 1536, height: 864 },
+      locale: 'ru-RU', timezoneId: 'Europe/Moscow',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    });
+    return { browser, context };
+  }
+  // desktop_1920 — десктоп по умолчанию, безусловный лидер по популярности
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
   const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
     locale: 'ru-RU', timezoneId: 'Europe/Moscow',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   });
