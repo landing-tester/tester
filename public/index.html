@@ -1758,7 +1758,7 @@ function runVisualCheck() {
   visualRunning = true;
   visualResults = {};
   ['desktop_1920','desktop_1536','mobile_414','mobile_360'].forEach(function(k){ visualResults[k] = {status:'pending', checks:[], screenshotUrl:null}; });
-  visualResults.chromium.status = 'running';
+  visualResults.desktop_1920.status = 'running';
   renderVisualGrid();
 
   var btn = document.getElementById('btn-run-visual');
