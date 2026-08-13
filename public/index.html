@@ -1680,8 +1680,8 @@ function closeSmsModal(code) {
 
 
 var VISUAL_DEVICE_LABELS = {
-  chromium: 'Chromium Desktop', yandex: 'Яндекс Браузер',
-  iphone: 'iPhone 13', pixel: 'Pixel 5',
+  desktop_1920: 'Десктоп 1920×1080', desktop_1536: 'Десктоп 1536×864',
+  mobile_414: 'Мобильный 414×896', mobile_360: 'Мобильный 360×800',
 };
 var visualResults = {}; // device -> {checks, screenshotUrl, status: 'pending'|'running'|'done'}
 var visualRunning = false;
@@ -1689,7 +1689,7 @@ var visualRunning = false;
 function renderVisualGrid() {
   var grid = document.getElementById('visual-grid');
   if (!grid) return;
-  var devices = ['chromium', 'yandex', 'iphone', 'pixel'];
+  var devices = ['desktop_1920', 'desktop_1536', 'mobile_414', 'mobile_360'];
 
   grid.innerHTML = devices.map(function(dk) {
     var r = visualResults[dk];
@@ -1725,7 +1725,6 @@ function renderVisualGrid() {
       return '<div class="visual-check-row">' +
         '<span class="visual-check-icon" style="color:'+color+'">'+icon+'</span>' +
         '<span class="visual-check-name">'+c.name+'</span>' +
-        (c.note ? '<span class="visual-check-note" title="'+c.note+'">'+c.note+'</span>' : '') +
       '</div>';
     }).join('');
 
@@ -1758,7 +1757,7 @@ function runVisualCheck() {
 
   visualRunning = true;
   visualResults = {};
-  ['chromium','yandex','iphone','pixel'].forEach(function(k){ visualResults[k] = {status:'pending', checks:[], screenshotUrl:null}; });
+  ['desktop_1920','desktop_1536','mobile_414','mobile_360'].forEach(function(k){ visualResults[k] = {status:'pending', checks:[], screenshotUrl:null}; });
   visualResults.chromium.status = 'running';
   renderVisualGrid();
 
@@ -1795,7 +1794,7 @@ function runVisualCheck() {
     if (data.type === 'visual_result') {
       visualResults[data.device] = { status: 'done', checks: data.checks, screenshotUrl: data.screenshotUrl };
       // помечаем следующее устройство как "running", если оно ещё pending
-      var order = ['chromium','yandex','iphone','pixel'];
+      var order = ['desktop_1920','desktop_1536','mobile_414','mobile_360'];
       var idx = order.indexOf(data.device);
       if (idx >= 0 && idx + 1 < order.length && visualResults[order[idx+1]].status === 'pending') {
         visualResults[order[idx+1]].status = 'running';
