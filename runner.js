@@ -824,6 +824,18 @@ async function runTestInner(config, emit, browserRef) {
 
         await sleep(1000);
 
+        // Проверяем: возможно, оплата уже прошла одноклик-сценарием
+        // (карта уже привязана к аккаунту) ещё до того, как мы стали искать
+        // поля карты — тогда вводить их вообще не нужно, и дальнейший поиск
+        // будет просто тщетным ожиданием несуществующей формы
+        const alreadyPaidPatterns = ['paymentcompleted','payment-paypromo','paywallscreen','plus_purchase_success','promocode-activated','promocode_purch_tarif'];
+        const alreadyPaid = ymGoals.some(g => alreadyPaidPatterns.some(p => g.toLowerCase().includes(p)));
+
+        if (alreadyPaid) {
+          log('Оплата уже прошла (похоже на одноклик) — форма карты не требуется', 'ok');
+          result('Оплата', 'pass', 'Одноклик — уже оплачено');
+        } else {
+
         // Универсальная проверка: если внутри самого виджета есть экран
         // активации промокода (например "Активировать" с уже подставленным кодом,
         // это встречается и у Кинопоиска, и у Музыки при promocode= в URL) —
@@ -855,7 +867,14 @@ async function runTestInner(config, emit, browserRef) {
         // во вложенном дочернем фрейме с другим доменом (например, у payment-widget.plus.yandex.ru).
         // Поэтому ищем поле номера карты по ВСЕМ фреймам страницы, а не только в trustFrame.
         let cardFrame = null;
+        let paidDuringWait = false;
         for (let ci = 0; ci < 40; ci++) {
+          // На случай если оплата (одноклик) случится прямо во время этого ожидания —
+          // проверяем цели заново на каждой итерации, чтобы не ждать зря все 40 секунд
+          if (ymGoals.some(g => alreadyPaidPatterns.some(p => g.toLowerCase().includes(p)))) {
+            paidDuringWait = true;
+            break;
+          }
           for (const f of activePage.frames()) {
             const el = await withTimeout(f.$('input#regular-card-number-input'), 2000).catch(() => null);
             if (el) { cardFrame = f; break; }
@@ -863,6 +882,11 @@ async function runTestInner(config, emit, browserRef) {
           if (cardFrame) break;
           await sleep(1000);
         }
+
+        if (paidDuringWait) {
+          log('Оплата прошла (одноклик) прямо во время ожидания формы карты', 'ok');
+          result('Оплата', 'pass', 'Одноклик — уже оплачено');
+        } else {
 
         if (cardFrame && cardFrame !== trustFrame) {
           log('Поле карты найдено во вложенном фрейме: ' + cardFrame.url().slice(0,60), 'ok');
@@ -1137,6 +1161,10 @@ async function runTestInner(config, emit, browserRef) {
             log('Кнопка «Подключить» не найдена', 'warn');
             result('Оплата', 'fail', 'Кнопка не найдена — тариф не оформлен');
           }
+
+        } // конец блока else (paidDuringWait) — карта не появилась зря ждать не пришлось
+
+        } // конец блока else (alreadyPaid) — обычный путь с картой
       } else {
         log('Виджет не найден', 'warn');
         await saveDebugShot(activePage, 'widget-not-found', emit);
