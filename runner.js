@@ -736,34 +736,46 @@ async function runTestInner(config, emit, browserRef) {
       await activePage.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
       await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 15000 }).catch(() => {});
-      for (const s of ctaSels2) {
-        try {
-          const el = await activePage.$(s);
-          if (el) {
-            await el.scrollIntoViewIfNeeded().catch(() => {});
-            const box = await el.boundingBox();
-            if (box && box.width > 0) {
-              if (isMobile) {
-                const [popup] = await Promise.all([
-                  context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-                  el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2))),
-                ]);
-                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
-                if (popup) {
-                  log('Виджет открылся в отдельном окне', 'ok');
-                  await popup.waitForLoadState('domcontentloaded').catch(() => {});
-                  activePage = popup;
-                  await sleep(1500);
+
+      // Некоторые лендинги показывают кнопки цепочкой: клик по первой открывает
+      // вторую (например "Испытать удачу" → "Начать смотреть" → виджет) —
+      // поэтому пробуем кликать до 3 раз подряд, пока кнопки продолжают появляться
+      for (let round = 0; round < 3; round++) {
+        let clickedThisRound = false;
+        for (const s of ctaSels2) {
+          try {
+            const el = await activePage.$(s);
+            if (el) {
+              await el.scrollIntoViewIfNeeded().catch(() => {});
+              const box = await el.boundingBox();
+              if (box && box.width > 0) {
+                if (isMobile) {
+                  const [popup] = await Promise.all([
+                    context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+                    el.click({ timeout: 5000 }).catch(() => el.tap().catch(() => activePage.mouse.click(box.x + box.width/2, box.y + box.height/2))),
+                  ]);
+                  log('Клик CTA (открываем виджет, раунд '+(round+1)+'): ' + s.slice(0,50), 'ok');
+                  if (popup) {
+                    log('Виджет открылся в отдельном окне', 'ok');
+                    await popup.waitForLoadState('domcontentloaded').catch(() => {});
+                    activePage = popup;
+                    await sleep(1500);
+                  }
+                } else {
+                  await activePage.mouse.click(box.x + box.width/2, box.y + box.height/2);
+                  log('Клик CTA (открываем виджет, раунд '+(round+1)+'): ' + s.slice(0,50), 'ok');
                 }
-              } else {
-                await activePage.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                log('Клик CTA (открываем виджет): ' + s.slice(0,50), 'ok');
+                await sleep(3000);
+                clickedThisRound = true;
+                break;
               }
-              await sleep(3000);
-              break;
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
+        if (!clickedThisRound) break;
+        // Проверяем, не появилась ли фрейм оплаты уже сейчас — тогда дальше кликать не нужно
+        const widgetAlready = activePage.frames().some(f => f.url().includes('diehard.yandex') || f.url().includes('payment-widget'));
+        if (widgetAlready) break;
       }
 
       } // конец блока if (!giftLanding) — дальше общая логика для всех типов лендингов
