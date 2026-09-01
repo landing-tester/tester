@@ -94,6 +94,8 @@ module.exports = [
       'div.subscription-button span',
       'div.button_background_gradient span',
       'span:has-text("Подключить")',
+      'div.promo-hero-slot__step-btn',
+      'div:has-text("Испытать удачу")',
     ],
     popupLogin: 'div.sign-in__button',
     emailToggle: 'button.login__toggle-btn:has-text("Почта"), button.login__toggle-switch:has-text("Почта")',
