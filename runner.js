@@ -35,6 +35,13 @@ function sel(profile, key, fallback, configSelectors) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Универсальный селектор CTA-кнопки открытия оффера подписки. Замечено, что
+// независимо от текста самой кнопки ("До года бесплатно", "Начать смотреть",
+// "Подключить" и т.д.) и от лендинга, внутри неё почти всегда лежит один и тот
+// же служебный маркер аналитики Яндекса — это позволяет находить кнопку даже
+// на новых лендингах с ещё не встречавшимся текстом, без правки selectors.js
+const UNIVERSAL_CTA_SEL = 'div:has(> .payment-observer-offer-analytics), button:has(> .payment-observer-offer-analytics), *:has(> .payment-observer-offer-analytics)';
+
 // Оборачивает промис жёстким таймаутом — нужно для запросов к отдельным
 // фреймам (frame.$()), которые сами по себе не имеют встроенного таймаута
 // и могут зависнуть навсегда, если конкретный фрейм в нестабильном состоянии
@@ -520,7 +527,7 @@ async function runTestInner(config, emit, browserRef) {
 
       if (!usedInlineEmailForm) {
       // CTA кнопка
-      const ctaSels = (profile && profile.cta) || [
+      const ctaSels = [UNIVERSAL_CTA_SEL].concat((profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
         '[class*="button_background_gradient"]',
         'button:has-text("До года бесплатно")',
@@ -528,7 +535,7 @@ async function runTestInner(config, emit, browserRef) {
         'button:has-text("Попробовать")',
         'span:has-text("До года бесплатно")',
         '.button_type_new-design span',
-      ];
+      ]);
 
       await page.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
@@ -723,7 +730,7 @@ async function runTestInner(config, emit, browserRef) {
       if (!(profile && profile.giftLanding)) {
 
       // После авторизации кликаем CTA снова чтобы открыть виджет
-      const ctaSels2 = (profile && profile.cta) || [
+      const ctaSels2 = [UNIVERSAL_CTA_SEL].concat((profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
         '[class*="button_background_gradient"]',
         'button:has-text("До года бесплатно")',
@@ -732,7 +739,7 @@ async function runTestInner(config, emit, browserRef) {
         'button:has-text("Подключить")',
         'span:has-text("До года бесплатно")',
         '.button_type_new-design span',
-      ];
+      ]);
       await activePage.evaluate(() => window.scrollTo(0, 0));
       await sleep(500);
       await activePage.waitForSelector(ctaSels2.join(', '), { timeout: 15000 }).catch(() => {});
@@ -962,45 +969,61 @@ async function runTestInner(config, emit, browserRef) {
           log('Клик «Подключить»', 'ok');
           await sleep(3000);
 
-            // SMS подтверждение
+            // SMS подтверждение. ВАЖНО: даже для paid-card (одноклик) не пропускаем
+            // проверку вслепую — сайт иногда всё равно запрашивает SMS, несмотря на
+            // привязанную карту. Просто ждём короче, раз обычно там его не будет.
             const isPaidCard = config.account && config.account.type === 'paid-card';
+            const detectWindow = isPaidCard ? 10 : 60;
 
-            if (!isPaidCard) {
-              // Сначала ждём появления SMS-поля на странице (до 60 секунд)
-              log('Ждём SMS-поле на странице...', 'info');
-              let smsField = null;
-              let smsFrame = activePage;
-              for (let si = 0; si < 60; si++) {
-                // проверяем 3DS фрейм банка и ищем SMS поле
-                let has3ds = false;
-                for (const f of activePage.frames()) {
+            log(isPaidCard ? 'Проверяем, не запросит ли банк подтверждение (одноклик)...' : 'Ждём SMS-поле на странице...', 'info');
+            let smsField = null;
+            let smsFrame = activePage;
+            for (let si = 0; si < detectWindow; si++) {
+              // проверяем 3DS фрейм банка и ищем SMS поле
+              let has3ds = false;
+              for (const f of activePage.frames()) {
 
-                  const furl = f.url();
-                  // 3DS фрейм банка — ждём именно страницу с формой ввода кода
-                  // trust.yandex.ru — промежуточный, secure.tbank.ru — реальная форма
-                  if (furl.includes('secure.tbank.ru') || furl.includes('3dsec') ||
-                      (furl.includes('acs/') && furl.includes('challenge'))) {
-                    has3ds = true;
-                    smsFrame = f;
-                    log('3DS форма банка: ' + furl.slice(0, 80), 'ok');
+                const furl = f.url();
+                // 3DS фрейм банка — ждём именно страницу с формой ввода кода
+                // trust.yandex.ru — промежуточный, secure.tbank.ru — реальная форма
+                if (furl.includes('secure.tbank.ru') || furl.includes('3dsec') ||
+                    (furl.includes('acs/') && furl.includes('challenge'))) {
+                  has3ds = true;
+                  smsFrame = f;
+                  log('3DS форма банка: ' + furl.slice(0, 80), 'ok');
+                  break;
+                }
+                // ищем поле напрямую
+                try {
+                  const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
+                  if (sf2 && await sf2.isVisible().catch(() => false)) {
+                    smsField = sf2; smsFrame = f;
+                    log('SMS-поле: ' + furl.slice(0, 80), 'ok');
                     break;
                   }
-                  // ищем поле напрямую
-                  try {
-                    const sf2 = await withTimeout(f.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[name*="otp"], input[name*="code"], input[id*="otp"]'), 2000).catch(() => null);
-                    if (sf2 && await sf2.isVisible().catch(() => false)) {
-                      smsField = sf2; smsFrame = f;
-                      log('SMS-поле: ' + furl.slice(0, 80), 'ok');
-                      break;
-                    }
-                  } catch (_) {}
-                }
-                if (smsField || has3ds) break;
-                // страница напрямую
-                smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
-                if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
-                smsField = null;
-                await sleep(1000);
+                } catch (_) {}
+              }
+              if (smsField || has3ds) break;
+              // страница напрямую
+              smsField = await activePage.$('input[data-qa="otp-input"], #otp-container input, input[maxlength="6"], input[maxlength="4"], input[autocomplete="one-time-code"]').catch(() => null);
+              if (smsField && await smsField.isVisible().catch(() => false)) { smsFrame = activePage; break; }
+              smsField = null;
+              await sleep(1000);
+            }
+
+            const smsActuallyNeeded = !!smsField || (smsFrame && smsFrame !== activePage);
+
+            if (!smsActuallyNeeded && isPaidCard) {
+              // Подтверждение реально не потребовалось — одноклик сработал по-настоящему
+              log('Подтверждение не потребовалось — одноклик сработал', 'ok');
+              result('Оплата', 'pass', 'Одноклик');
+            } else if (!smsActuallyNeeded && !isPaidCard) {
+              log('SMS-поле не найдено за отведённое время', 'warn');
+              result('SMS-подтверждение', 'warn', 'Поле не найдено');
+              result('Оплата', 'warn', 'Не удалось подтвердить');
+            } else {
+              if (isPaidCard) {
+                log('Банк всё же запросил подтверждение, несмотря на одноклик — обрабатываем как обычно', 'warn');
               }
               if (smsField) {
                 log('SMS-поле найдено — показываем окошко', 'ok');
@@ -1090,18 +1113,15 @@ async function runTestInner(config, emit, browserRef) {
                 log('SMS-код введён: ' + smsCode, 'ok');
                 await sleep(3000);
                 result('SMS-подтверждение', 'pass', 'Введено вручную');
+                result('Оплата', 'pass');
               } else {
                 log('SMS-код не введён (пропущен)', 'warn');
                 result('SMS-подтверждение', 'warn', 'Пропущено');
+                result('Оплата', 'warn', 'SMS-код не введён');
               }
-            } else {
-              // Paid-card — одноклик без SMS
-              log('Одноклик — SMS не требуется', 'ok');
-              result('Оплата', 'pass', 'Одноклик');
             }
 
             await sleep(2000);
-            result('Оплата', 'pass');
 
             // Опция «Попробовать»
             log('Ждём экран опции...', 'info');
@@ -1359,7 +1379,7 @@ async function checkOneDevice(deviceKey, label, config, emit) {
               await sleep(1500);
             }
           } else {
-            const ctaSels = (profile && profile.cta) || ['button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")'];
+            const ctaSels = [UNIVERSAL_CTA_SEL].concat((profile && profile.cta) || ['button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")']);
             for (const s of ctaSels) {
               const el = await page.$(s).catch(() => null);
               if (el) {
@@ -1416,10 +1436,10 @@ async function checkOneDevice(deviceKey, label, config, emit) {
     else pushCheck('H1 присутствует', 'warn', 'Не найден');
 
     // CTA видна (используем профиль лендинга, если есть)
-    const ctaSels = (profile && profile.cta) || [
+    const ctaSels = [UNIVERSAL_CTA_SEL].concat((profile && profile.cta) || [
       'button:has-text("До года бесплатно")', 'span:has-text("До года бесплатно")',
       'button:has-text("Попробовать")', 'button:has-text("Подключить")',
-    ];
+    ]);
     let ctaVisible = false;
     for (const s of ctaSels) {
       try {
