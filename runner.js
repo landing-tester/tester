@@ -322,6 +322,12 @@ async function doYandexAuth(page, config, profile, results, emit, skipLoginStep)
       await sleep(1500);
     }
 
+    // Строгая проверка: ушли с passport, но в странице нет «битого» фрейма chrome-error
+    const brokenFrames = page.frames().filter(f => f.url().startsWith('chrome-error://'));
+    if (brokenFrames.length && !page.url().includes('passport.yandex')) {
+      log('Вход не подтверждён: на странице сетевая ошибка загрузки (chrome-error). Это проблема сети/сервера, а не логина', 'warn');
+    }
+
     if (!page.url().includes('passport.yandex')) {
       log('Авторизация успешна', 'ok');
       results.push({ name:'Авторизация', status:'pass' });
@@ -448,6 +454,32 @@ async function runTestInner(config, emit, browserRef) {
   }
 
   page.on('console', msg => handleConsoleText(msg.text()));
+
+  // Диагностика сети: логируем неудавшиеся запросы и HTTP-ошибки к доменам Яндекса
+  const netFailSeen = new Set();
+  page.on('requestfailed', req => {
+    try {
+      const u = req.url();
+      if (!/yandex|yastatic|ya\.ru|tbank|tinkoff/i.test(u)) return;
+      const err = (req.failure() && req.failure().errorText) || 'unknown';
+      if (/ERR_ABORTED/.test(err)) return; // обычная отмена, не ошибка
+      const key = err + ' ' + u.slice(0, 80);
+      if (netFailSeen.has(key) || netFailSeen.size > 25) return;
+      netFailSeen.add(key);
+      log('Сеть: запрос не удался (' + err + '): ' + u.slice(0, 110), 'warn');
+    } catch (_) {}
+  });
+  page.on('response', res => {
+    try {
+      const st = res.status();
+      const u = res.url();
+      if (st < 400 || !/passport\.yandex|yastatic|music\.yandex|books\.yandex|kinopoisk/i.test(u)) return;
+      const key = st + ' ' + u.slice(0, 80);
+      if (netFailSeen.has(key) || netFailSeen.size > 25) return;
+      netFailSeen.add(key);
+      log('Сеть: HTTP ' + st + ': ' + u.slice(0, 110), 'warn');
+    } catch (_) {}
+  });
 
   try {
     const cdp = await context.newCDPSession(page);
