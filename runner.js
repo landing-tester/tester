@@ -469,6 +469,26 @@ async function runTestInner(config, emit, browserRef) {
       log('Сеть: запрос не удался (' + err + '): ' + u.slice(0, 110), 'warn');
     } catch (_) {}
   });
+  // Навигации фреймов (видно, какой именно фрейм ушёл в chrome-error) и ошибки загрузки из консоли
+  page.on('framenavigated', fr => {
+    try {
+      const u = fr.url();
+      if (u.startsWith('chrome-error://')) {
+        log('Фрейм упал в chrome-error (родитель: ' + ((fr.parentFrame() && fr.parentFrame().url()) || 'нет').slice(0, 80) + ')', 'warn');
+      }
+    } catch (_) {}
+  });
+  page.on('console', msg => {
+    try {
+      if (msg.type() !== 'error') return;
+      const t = msg.text();
+      if (!/refused|blocked|ERR_|Failed to load|frame/i.test(t)) return;
+      const key = 'c ' + t.slice(0, 100);
+      if (netFailSeen.has(key) || netFailSeen.size > 25) return;
+      netFailSeen.add(key);
+      log('Консоль: ' + t.slice(0, 160), 'warn');
+    } catch (_) {}
+  });
   page.on('response', res => {
     try {
       const st = res.status();
