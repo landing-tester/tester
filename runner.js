@@ -153,6 +153,11 @@ async function tryInlineLogin(page, profile, config, results, emit) {
 // ── Авторизация через Яндекс Паспорт ───────────────────────────────────────
 async function doYandexAuth(page, config, profile, results, emit, skipLoginStep) {
   function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
+  const isPassportNow = () => page.url().includes('passport.yandex') ||
+    page.frames().some(f => f.url().includes('passport.yandex'));
+  // Если логин уже отправлен через встроенную форму лендинга (skipLoginStep) —
+  // это считается легитимным входом, даже если Паспорт не открывался отдельной страницей
+  let sawPassport = !!skipLoginStep || isPassportNow();
 
   try {
     await page.waitForURL('**/passport.yandex**', { timeout: 8000 }).catch(() => {});
@@ -224,9 +229,7 @@ async function doYandexAuth(page, config, profile, results, emit, skipLoginStep)
       await sleep(1000);
     }
 
-    const isPassportNow = () => page.url().includes('passport.yandex') ||
-      page.frames().some(f => f.url().includes('passport.yandex'));
-    let sawPassport = !!loginField || isPassportNow();
+    sawPassport = sawPassport || !!loginField || isPassportNow();
 
     if (loginField) {
       await loginField.click(); await sleep(200);
@@ -362,12 +365,6 @@ async function doYandexAuth(page, config, profile, results, emit, skipLoginStep)
       log('Ещё на passport (' + page.url().slice(0, 80) + '), ждём повторно...', 'info');
       await page.waitForURL(u => !u.includes('passport.yandex'), { timeout: 10000 }).catch(() => {});
       await sleep(1500);
-    }
-
-    // Строгая проверка: ушли с passport, но в странице нет «битого» фрейма chrome-error
-    const brokenFrames = page.frames().filter(f => f.url().startsWith('chrome-error://'));
-    if (brokenFrames.length && !page.url().includes('passport.yandex')) {
-      log('Вход не подтверждён: на странице сетевая ошибка загрузки (chrome-error). Это проблема сети/сервера, а не логина', 'warn');
     }
 
     if (!sawPassport && !isPassportNow()) {
