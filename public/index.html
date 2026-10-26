@@ -1185,13 +1185,17 @@ function runTests() {
 
     if (data.type === 'done') {
       // Явная проверка одноклика: если аккаунт с уже привязанной картой
-      // (paid-card) и за весь прогон не было ни одного провала SMS-подтверждения —
-      // ставим галочку, независимо от точной формулировки в заметках результатов
+      // (paid-card), оплата прошла, и за весь прогон SMS-подтверждение
+      // вообще НЕ запрашивалось (а не просто "не провалилось" — если SMS
+      // запрашивали и код ввели успешно, это как раз значит, что одноклика нет) —
+      // ставим галочку
       if (config.account && config.account.type === 'paid-card') {
-        var smsFailed = results.some(function(r){ return r.name === 'SMS-подтверждение' && r.status !== 'pass'; });
+        var smsWasRequested = results.some(function(r){ return r.name === 'SMS-подтверждение'; });
         var paymentHappened = results.some(function(r){ return r.name === 'Оплата' && r.status === 'pass'; });
-        if (paymentHappened && !smsFailed) {
+        if (paymentHappened && !smsWasRequested) {
           clStatuses['cl5'] = 'pass';
+        } else if (smsWasRequested) {
+          clStatuses['cl5'] = 'fail';
         }
       }
 
@@ -1531,7 +1535,7 @@ function applyChecklistFromResult(r) {
     clStatuses['cl8'] = r.status === 'pass' ? 'pass' : 'fail';
   if (r.name === 'SMS-подтверждение' && r.status === 'pass')
     clStatuses['cl5'] = 'fail'; // был SMS — одноклик не включён
-  if ((r.name === 'Оплата' && r.status === 'pass' && r.note && r.note.indexOf('Одноклик') !== -1) || r.name === 'Подписка оформлена')
+  if (r.name === 'Оплата' && r.status === 'pass' && r.note && r.note.indexOf('Одноклик') !== -1)
     clStatuses['cl5'] = 'pass';
   if (r.name === 'Опция принята' && r.status === 'pass')
     clStatuses['cl7'] = 'pass';
