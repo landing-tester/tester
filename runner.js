@@ -112,6 +112,44 @@ async function handlePopup(page, profile, emit) {
   return 'none';
 }
 
+// ── Встроенная форма входа на лендинге (поп-ап/блок с button.login__button) ─
+// Если на странице видна такая форма — заполняем её и передаём дальше в Паспорт.
+async function tryInlineLogin(page, profile, config, results, emit) {
+  function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
+  const btn = await page.$('button.login__button').catch(() => null);
+  if (!btn || !(await btn.isVisible().catch(() => false))) return false;
+
+  log('Найдена встроенная форма входа (button.login__button) — заполняем её', 'info');
+  const toggleSel = (profile && profile.emailToggle) ||
+    'button.login__toggle-btn:has-text("Почта"), button.login__toggle-switch:has-text("Почта")';
+  const toggle = await page.$(toggleSel).catch(() => null);
+  if (toggle && await toggle.isVisible().catch(() => false)) {
+    await toggle.click().catch(() => {});
+    await sleep(500);
+  }
+
+  const credential = config.account.loginMode === 'email' ? config.account.email : config.account.login;
+  const fieldSel = (profile && profile.emailField ? profile.emailField + ', ' : '') + 'input.login__input';
+  let field = null;
+  const candidates = await page.$$(fieldSel).catch(() => []);
+  for (const c of candidates) {
+    if (await c.isVisible().catch(() => false)) { field = c; break; }
+  }
+  if (field) {
+    await field.click().catch(() => {});
+    await sleep(200);
+    await field.fill(credential).catch(() => {});
+    log('Логин/email введён во встроенную форму: ' + credential, 'ok');
+  } else {
+    log('Поле встроенной формы входа не найдено', 'warn');
+  }
+  await btn.click({ timeout: 4000 }).catch(() => btn.click({ timeout: 3000, force: true }).catch(() => {}));
+  log('Клик «Войти» на встроенной форме', 'ok');
+  await sleep(2000);
+  await doYandexAuth(page, config, profile, results, emit, true);
+  return true;
+}
+
 // ── Авторизация через Яндекс Паспорт ───────────────────────────────────────
 async function doYandexAuth(page, config, profile, results, emit, skipLoginStep) {
   function log(msg, type) { emit({ type:'log', msg, logType: type||'info' }); }
@@ -185,6 +223,10 @@ async function doYandexAuth(page, config, profile, results, emit, skipLoginStep)
       if (loginField) break;
       await sleep(1000);
     }
+
+    const isPassportNow = () => page.url().includes('passport.yandex') ||
+      page.frames().some(f => f.url().includes('passport.yandex'));
+    let sawPassport = !!loginField || isPassportNow();
 
     if (loginField) {
       await loginField.click(); await sleep(200);
@@ -326,6 +368,13 @@ async function doYandexAuth(page, config, profile, results, emit, skipLoginStep)
     const brokenFrames = page.frames().filter(f => f.url().startsWith('chrome-error://'));
     if (brokenFrames.length && !page.url().includes('passport.yandex')) {
       log('Вход не подтверждён: на странице сетевая ошибка загрузки (chrome-error). Это проблема сети/сервера, а не логина', 'warn');
+    }
+
+    if (!sawPassport && !isPassportNow()) {
+      log('Форма входа Яндекс ID так и не появилась (страница осталась на ' + page.url().slice(0, 70) + '). Вход не выполнен', 'fail');
+      await saveDebugShot(page, 'auth-form-never-appeared', emit);
+      results.push({ name:'Авторизация', status:'fail', note:'Форма входа не появилась — вход не выполнен' });
+      return false;
     }
 
     if (!page.url().includes('passport.yandex')) {
@@ -578,6 +627,10 @@ async function runTestInner(config, emit, browserRef) {
       }
 
       if (!usedInlineEmailForm) {
+      // Встроенная форма входа уже на странице (поп-ап «Войдите в аккаунт»)?
+      if (await tryInlineLogin(page, profile, config, results, emit)) usedInlineEmailForm = true;
+      }
+      if (!usedInlineEmailForm) {
       // CTA кнопка
       const ctaSels = [UNIVERSAL_CTA_SEL].concat((profile && profile.cta) || [
         'div.promo-sport__button-subscription-offer',
@@ -616,6 +669,8 @@ async function runTestInner(config, emit, browserRef) {
           log('Клик «Войти» в поп-апе (повторная проверка)', 'ok');
           ctaClicked = true;
           await sleep(2000);
+          // после клика мог открыться встроенный блок входа
+          if (await tryInlineLogin(page, profile, config, results, emit)) usedInlineEmailForm = true;
         }
       }
 
@@ -697,7 +752,11 @@ async function runTestInner(config, emit, browserRef) {
         }
       }
 
-      await doYandexAuth(page, config, profile, results, emit);
+      // После клика CTA/«Войти» на лендинге мог появиться встроенный блок входа
+      if (!usedInlineEmailForm) {
+        if (await tryInlineLogin(page, profile, config, results, emit)) usedInlineEmailForm = true;
+      }
+      if (!usedInlineEmailForm) await doYandexAuth(page, config, profile, results, emit);
       } // конец блока if (!usedInlineEmailForm)
     }
 
@@ -1419,6 +1478,10 @@ async function checkOneDevice(deviceKey, label, config, emit) {
             await sleep(2000);
             await doYandexAuth(page, config, profile, [], emit, true);
           }
+        }
+
+        if (!usedInlineEmailForm) {
+          if (await tryInlineLogin(page, profile, config, [], emit)) usedInlineEmailForm = true;
         }
 
         if (!usedInlineEmailForm) {
